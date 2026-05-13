@@ -1,0 +1,148 @@
+% Modern ATS-Friendly CV Template
+% Designed for ATS compatibility: no tables, no columns for main content, clean structure
+\documentclass[11pt,a4paper]{article}
+
+% ── Packages ────────────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1.8cm, top=1.5cm, bottom=1.5cm]{geometry}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fontawesome5}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{microtype}
+\usepackage{lmodern}
+\usepackage{parskip}
+
+% ── Color Definition ─────────────────────────────────────────────────────────
+% This line is replaced by LaTeXTemplateAgent with the user's chosen color
+\definecolor{maincolor}{RGB}{46,134,171}
+\definecolor{lightgray}{RGB}{245,245,245}
+\definecolor{darkgray}{RGB}{80,80,80}
+\definecolor{medgray}{RGB}{140,140,140}
+
+% ── Hyperref Setup ────────────────────────────────────────────────────────────
+\hypersetup{
+  colorlinks=true,
+  urlcolor=maincolor,
+  linkcolor=maincolor,
+  pdfborder={0 0 0},
+}
+
+% ── Section Title Styling ─────────────────────────────────────────────────────
+\titleformat{\section}
+  {\large\bfseries\color{maincolor}}
+  {}
+  {0em}
+  {}
+  [\color{maincolor}\titlerule]
+
+\titlespacing{\section}{0pt}{10pt}{6pt}
+
+% ── Custom Commands ───────────────────────────────────────────────────────────
+
+% Experience entry: {title}{company}{dates}{location}{content}
+\newcommand{\experienceentry}[5]{%
+  \noindent
+  \begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}
+    \textbf{\large #1} & \textcolor{medgray}{#3} \\
+    \textcolor{maincolor}{\textbf{#2}} & \textcolor{medgray}{\small #4} \\
+  \end{tabular*}
+  \vspace{2pt}
+  #5
+  \vspace{6pt}
+}
+
+% Education entry: {degree}{institution}{dates}{location}
+\newcommand{\educationentry}[4]{%
+  \noindent
+  \begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}
+    \textbf{#1} & \textcolor{medgray}{#3} \\
+    \textcolor{maincolor}{#2} & \textcolor{medgray}{\small #4} \\
+  \end{tabular*}
+  \vspace{4pt}
+}
+
+% Project entry: {name}{description}
+\newcommand{\projectentry}[2]{%
+  \noindent\textbf{\textcolor{maincolor}{#1}} --- #2
+  \vspace{4pt}
+}
+
+% ── Document ──────────────────────────────────────────────────────────────────
+\begin{document}
+
+\pagestyle{empty}
+
+% ── Header ───────────────────────────────────────────────────────────────────
+\begin{minipage}[t]{0.72\textwidth}
+  \vspace{0pt}
+  {\Huge\bfseries\color{maincolor} {{CANDIDATE_NAME}}}\\[4pt]
+  {\large\color{darkgray} {{CANDIDATE_TITLE}}}\\[8pt]
+  \textcolor{medgray}{
+    \small
+    \faEnvelope\ \href{mailto:{{CANDIDATE_EMAIL}}}{{{CANDIDATE_EMAIL}}}
+    \quad
+    \faPhone\ {{CANDIDATE_PHONE}}
+    \quad
+    \faMapMarker*\ {{CANDIDATE_LOCATION}}
+  }\\[2pt]
+  \textcolor{medgray}{
+    \small
+    \ifx\empty{{CANDIDATE_LINKEDIN}}\empty\else
+      \faLinkedin\ \href{{{CANDIDATE_LINKEDIN_URL}}}{{{CANDIDATE_LINKEDIN}}}
+    \fi
+  }
+\end{minipage}%
+\hfill
+\begin{minipage}[t]{0.25\textwidth}
+  \vspace{0pt}
+  \raggedleft
+  {{PHOTO_BLOCK}}
+\end{minipage}
+
+\vspace{8pt}
+\noindent\color{maincolor}\rule{\textwidth}{1.5pt}
+\vspace{4pt}
+
+% ── Professional Summary ──────────────────────────────────────────────────────
+\ifx\empty{{CANDIDATE_SUMMARY}}\empty\else
+\section{Professional Summary}
+\noindent {{CANDIDATE_SUMMARY}}
+\fi
+
+% ── Experience ────────────────────────────────────────────────────────────────
+\section{Professional Experience}
+{{EXPERIENCE_SECTION}}
+
+% ── Skills ───────────────────────────────────────────────────────────────────
+\section{Technical Skills}
+\noindent {{SKILLS_SECTION}}
+
+% ── Education ────────────────────────────────────────────────────────────────
+\section{Education}
+{{EDUCATION_SECTION}}
+
+% ── Projects ─────────────────────────────────────────────────────────────────
+\ifx\empty{{PROJECTS_SECTION}}\empty\else
+\section{Projects}
+{{PROJECTS_SECTION}}
+\fi
+
+% ── Certifications ───────────────────────────────────────────────────────────
+\ifx\empty{{CERTIFICATIONS_SECTION}}\empty\else
+\section{Certifications}
+{{CERTIFICATIONS_SECTION}}
+\fi
+
+% ── Languages ────────────────────────────────────────────────────────────────
+\ifx\empty{{LANGUAGES_SECTION}}\empty\else
+\section{Languages}
+\noindent {{LANGUAGES_SECTION}}
+\fi
+
+\end{document}

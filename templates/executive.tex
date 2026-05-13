@@ -1,0 +1,138 @@
+% Executive ATS-Friendly CV Template
+% Conservative, formal design suitable for senior and executive positions
+\documentclass[11pt,a4paper]{article}
+
+% ── Packages ─────────────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2cm, top=1.8cm, bottom=1.8cm]{geometry}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{microtype}
+\usepackage{lmodern}
+\usepackage{parskip}
+\usepackage{setspace}
+
+% ── Color Definition ─────────────────────────────────────────────────────────
+\definecolor{maincolor}{RGB}{46,134,171}
+\definecolor{darkgray}{RGB}{50,50,50}
+\definecolor{medgray}{RGB}{110,110,110}
+\definecolor{rulegray}{RGB}{180,180,180}
+
+% ── Hyperref Setup ────────────────────────────────────────────────────────────
+\hypersetup{
+  colorlinks=true,
+  urlcolor=maincolor,
+  linkcolor=maincolor,
+  pdfborder={0 0 0},
+}
+
+% ── Section Title Styling ─────────────────────────────────────────────────────
+\titleformat{\section}
+  {\normalsize\bfseries\uppercase\color{darkgray}}
+  {}
+  {0em}
+  {}
+  [\color{rulegray}\titlerule]
+
+\titlespacing{\section}{0pt}{12pt}{6pt}
+
+% ── Custom Commands ───────────────────────────────────────────────────────────
+\newcommand{\experienceentry}[5]{%
+  \noindent
+  \begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}
+    \textbf{#2} & \textit{\textcolor{medgray}{#3}} \\
+    \textit{\textcolor{maincolor}{#1}} & \textcolor{medgray}{\small #4} \\
+  \end{tabular*}
+  \vspace{2pt}
+  #5
+  \vspace{8pt}
+}
+
+\newcommand{\educationentry}[4]{%
+  \noindent
+  \begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}
+    \textbf{#2} & \textit{\textcolor{medgray}{#3}} \\
+    \textit{#1} & \textcolor{medgray}{\small #4} \\
+  \end{tabular*}
+  \vspace{4pt}
+}
+
+\newcommand{\projectentry}[2]{%
+  \noindent\textbf{#1:} #2
+  \vspace{4pt}
+}
+
+% ── Document ──────────────────────────────────────────────────────────────────
+\begin{document}
+
+\pagestyle{empty}
+
+% ── Header ───────────────────────────────────────────────────────────────────
+\begin{center}
+  {\Huge\bfseries\color{darkgray} {{CANDIDATE_NAME}}}\\[4pt]
+  {\large\textit{\color{maincolor} {{CANDIDATE_TITLE}}}}\\[6pt]
+  \color{medgray}\small
+  \href{mailto:{{CANDIDATE_EMAIL}}}{{{CANDIDATE_EMAIL}}}
+  \enspace\textbullet\enspace
+  {{CANDIDATE_PHONE}}
+  \enspace\textbullet\enspace
+  {{CANDIDATE_LOCATION}}
+  \ifx\empty{{CANDIDATE_LINKEDIN}}\else
+    \\[2pt]
+    \href{{{CANDIDATE_LINKEDIN_URL}}}{{{CANDIDATE_LINKEDIN}}}
+  \fi
+\end{center}
+
+\ifx\empty{{PHOTO_BLOCK}}\else
+  \begin{flushright}
+    \vspace{-2.5cm}
+    {{PHOTO_BLOCK}}
+  \end{flushright}
+\fi
+
+\noindent\color{darkgray}\rule{\textwidth}{0.8pt}
+\vspace{2pt}
+
+% ── Professional Summary ──────────────────────────────────────────────────────
+\ifx\empty{{CANDIDATE_SUMMARY}}\empty\else
+\section{Executive Summary}
+\noindent\textit{{{CANDIDATE_SUMMARY}}}
+\fi
+
+% ── Experience ────────────────────────────────────────────────────────────────
+\section{Professional Experience}
+{{EXPERIENCE_SECTION}}
+
+% ── Skills ───────────────────────────────────────────────────────────────────
+\section{Core Competencies \& Technical Skills}
+\noindent {{SKILLS_SECTION}}
+
+% ── Education ────────────────────────────────────────────────────────────────
+\section{Education}
+{{EDUCATION_SECTION}}
+
+% ── Projects ─────────────────────────────────────────────────────────────────
+\ifx\empty{{PROJECTS_SECTION}}\empty\else
+\section{Key Projects}
+{{PROJECTS_SECTION}}
+\fi
+
+% ── Certifications ───────────────────────────────────────────────────────────
+\ifx\empty{{CERTIFICATIONS_SECTION}}\empty\else
+\section{Certifications \& Professional Development}
+{{CERTIFICATIONS_SECTION}}
+\fi
+
+% ── Languages ────────────────────────────────────────────────────────────────
+\ifx\empty{{LANGUAGES_SECTION}}\empty\else
+\section{Languages}
+\noindent {{LANGUAGES_SECTION}}
+\fi
+
+\end{document}
