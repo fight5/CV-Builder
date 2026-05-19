@@ -1,8 +1,7 @@
-"""Streamlit interface for the AI ATS Resume Generator Agent."""
+"""Interface Streamlit pour l'agent Générateur de CV ATS par IA."""
 
 import os
 import sys
-import json
 import tempfile
 import logging
 from pathlib import Path
@@ -10,7 +9,7 @@ from pathlib import Path
 import streamlit as st
 import pandas as pd
 
-# Ensure project root is on the path
+# S'assurer que la racine du projet est dans le path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -22,15 +21,15 @@ from core.tools import extract_text_from_pdf, extract_text_from_docx
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ── Page Config ──────────────────────────────────────────────────────────────
+# ── Configuration de la page ──────────────────────────────────────────────────
 st.set_page_config(
-    page_title="AI ATS Resume Generator",
+    page_title="Générateur de CV ATS par IA",
     page_icon="📄",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
-# ── Custom CSS ────────────────────────────────────────────────────────────────
+# ── CSS personnalisé ──────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 .main-title {
@@ -44,95 +43,42 @@ st.markdown("""
     color: #555;
     margin-bottom: 1.5rem;
 }
-.score-card {
-    background: #f0f7ff;
-    border-left: 4px solid #2E86AB;
-    padding: 1rem;
-    border-radius: 4px;
-    margin-bottom: 1rem;
-}
 .warning-box {
     background: #fff3cd;
     border-left: 4px solid #ffc107;
     padding: 0.8rem;
     border-radius: 4px;
 }
-.success-box {
-    background: #d4edda;
-    border-left: 4px solid #28a745;
+.error-box {
+    background: #f8d7da;
+    border-left: 4px solid #dc3545;
     padding: 0.8rem;
     border-radius: 4px;
+}
+.empty-state {
+    text-align: center;
+    padding: 4rem 1rem;
+    color: #888;
+}
+.empty-state .icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+.empty-state .title {
+    font-size: 1.2rem;
+    color: #555;
+    margin-bottom: 0.5rem;
+}
+.empty-state .hint {
+    font-size: 0.95rem;
+    color: #999;
 }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ── Demo Data ─────────────────────────────────────────────────────────────────
-DEMO_JOB = """Senior Data Scientist — FinTech AI Platform
-
-We are looking for a Senior Data Scientist to join our AI team and build the next generation of credit risk models.
-
-Requirements:
-- 5+ years of experience in machine learning and data science
-- Strong proficiency in Python, including pandas, scikit-learn, XGBoost, LightGBM
-- Experience with deep learning frameworks: TensorFlow or PyTorch
-- Proficiency in SQL and experience with BigQuery or Snowflake
-- Familiarity with MLflow, DVC, or similar MLOps tools
-- Experience deploying models in production using Docker and Kubernetes
-- Strong understanding of statistical methods: hypothesis testing, A/B testing
-- Experience with NLP and time-series forecasting is a plus
-- Excellent communication skills to present findings to non-technical stakeholders
-
-Nice to have:
-- Experience in the financial services industry
-- Knowledge of explainable AI (SHAP, LIME)
-- AWS or GCP certification
-
-Responsibilities:
-- Design, train, and deploy machine learning models for credit risk assessment
-- Collaborate with engineering teams to integrate models into production systems
-- Monitor model performance and implement drift detection
-- Mentor junior data scientists
-- Present results to C-level executives
-"""
-
-DEMO_RESUME = """Marie Dupont
-Senior Data Analyst | m.dupont@email.com | +33 6 12 34 56 78 | Paris, France
-linkedin.com/in/mariedupont
-
-PROFESSIONAL SUMMARY
-Data professional with 6 years of experience transforming large datasets into actionable insights. Skilled in Python and SQL, with experience in machine learning projects for retail and logistics sectors.
-
-EXPERIENCE
-
-Data Analyst — RetailTech Group, Paris | Jan 2021 – Present
-- Analyzed customer behavior data using Python and pandas
-- Built predictive models for churn prediction with scikit-learn
-- Created dashboards in Tableau for business stakeholders
-- Worked with SQL databases to extract and transform data
-
-Junior Data Scientist — LogiFlow, Lyon | Sept 2018 – Dec 2020
-- Developed demand forecasting models using ARIMA and linear regression
-- Processed and cleaned large datasets (>5M rows) with pandas and numpy
-- Collaborated with engineering team to put models in a REST API
-
-Education
-MSc Data Science — Université Paul Sabatier, Toulouse | 2018
-BSc Applied Mathematics — Université de Bordeaux | 2016
-
-SKILLS
-Python, SQL, pandas, numpy, scikit-learn, Tableau, Power BI, Git, Excel, R, statistics
-
-LANGUAGES
-French (Native), English (Fluent), Spanish (Intermediate)
-
-CERTIFICATIONS
-Google Data Analytics Certificate (2022)
-"""
-
-
 def _extract_resume_text(uploaded_file) -> str:
-    """Save uploaded file to temp location and extract text."""
+    """Sauvegarde le fichier téléversé en local temporaire et extrait le texte."""
     suffix = Path(uploaded_file.name).suffix.lower()
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(uploaded_file.read())
@@ -152,7 +98,7 @@ def _extract_resume_text(uploaded_file) -> str:
 
 
 def _extract_jd_text(uploaded_file) -> str:
-    """Extract job description text from uploaded PDF or text file."""
+    """Extrait le texte d'une offre d'emploi depuis un PDF ou un fichier texte."""
     suffix = Path(uploaded_file.name).suffix.lower()
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(uploaded_file.read())
@@ -171,218 +117,160 @@ def _extract_jd_text(uploaded_file) -> str:
 
 
 def _run_pipeline(job_text: str, resume_text: str, preferences: dict, photo_path: str | None):
-    """Import and run the orchestrator pipeline."""
+    """Importe et exécute le pipeline d'orchestration."""
     try:
         from core.orchestrator import run_pipeline
         return run_pipeline(job_text, resume_text, preferences, photo_path)
     except ImportError as e:
-        st.error(f"Import error: {e}. Ensure all dependencies are installed.")
+        st.error(f"Erreur d'importation : {e}. Vérifiez que toutes les dépendances sont installées.")
         return None
     except Exception as e:
-        st.error(f"Pipeline error: {e}")
-        logger.error(f"Pipeline error: {e}", exc_info=True)
+        st.error(f"Erreur du pipeline : {e}")
+        logger.error(f"Erreur du pipeline : {e}", exc_info=True)
         return None
 
 
-def _generate_demo_result() -> dict:
-    """Return a mock result for demo mode (no API key required)."""
-    return {
-        "matching_score": 74.5,
-        "keyword_coverage": 68.2,
-        "keywords_added": ["XGBoost", "LightGBM", "MLflow", "Docker", "Kubernetes", "A/B testing", "SHAP", "MLOps"],
-        "latex_source": r"""\documentclass[11pt,a4paper]{article}
-\usepackage[utf8]{inputenc}
-\usepackage[T1]{fontenc}
-\usepackage[margin=2cm]{geometry}
-\begin{document}
-\begin{center}
-  {\LARGE\textbf{Marie Dupont}}\\[4pt]
-  Senior Data Scientist\\[4pt]
-  m.dupont@email.com | +33 6 12 34 56 78 | Paris, France
-\end{center}
-\section*{Professional Summary}
-Results-driven Senior Data Scientist with 6+ years of experience designing and deploying machine learning models in production environments. Proven expertise in Python (pandas, scikit-learn, XGBoost, LightGBM), SQL, and statistical modeling. Track record of building credit-risk and demand-forecasting models, integrating MLOps workflows (MLflow, Docker, Kubernetes), and presenting data-driven insights to executive stakeholders.
-\section*{Professional Experience}
-\textbf{Senior Data Analyst}, RetailTech Group, Paris | Jan 2021 -- Present
-\begin{itemize}
-  \item Designed and deployed customer churn prediction models (XGBoost, LightGBM) achieving 87\% AUC, reducing churn by 14\%
-  \item Automated A/B testing framework reducing experiment cycle time by 40\%
-  \item Built MLflow experiment tracking pipeline for 12+ production models
-  \item Deployed models via Docker containers on Kubernetes cluster (GCP)
-  \item Delivered bi-weekly model performance reports to C-level executives
-\end{itemize}
-\textbf{Junior Data Scientist}, LogiFlow, Lyon | Sept 2018 -- Dec 2020
-\begin{itemize}
-  \item Developed time-series demand forecasting models (ARIMA, LSTM) with MAPE < 8\%
-  \item Built and maintained RESTful model serving API (Flask + Docker)
-  \item Processed 5M+ row datasets using pandas, numpy, and BigQuery SQL
-\end{itemize}
-\section*{Skills}
-Python, SQL, pandas, scikit-learn, XGBoost, LightGBM, TensorFlow, MLflow, Docker, Kubernetes, BigQuery, A/B testing, SHAP, statistics, Git, Tableau
-\end{document}""",
-        "pdf_path": None,
-        "executive_report": """# ATS Optimization Report
-
-**Candidate:** Marie Dupont
-**Target Position:** Senior Data Scientist
-**Matching Score:** 74.5%
-**Keyword Coverage:** 68.2%
-
-## Key Optimizations
-
-- Integrated 8 missing ATS keywords: XGBoost, LightGBM, MLflow, Docker, Kubernetes, A/B testing, SHAP, MLOps
-- Rewrote experience bullets with quantified achievements and action verbs
-- Added production deployment context (Docker, Kubernetes, GCP)
-- Enhanced summary to match senior-level positioning
-
-## Missing Skills (to address)
-- PyTorch / TensorFlow (partially addressed in summary)
-- Snowflake (not inferred from experience)
-- Hypothesis testing (now highlighted via A/B testing framing)
-""",
-        "diff_report": """# Diff Report
-
-## Summary
-**Before:** Data professional with 6 years of experience...
-**After:** Results-driven Senior Data Scientist with 6+ years... (XGBoost, LightGBM, MLOps, Docker, Kubernetes added)
-
-## Experiences
-| Original | Optimized |
-|---|---|
-| Built predictive models for churn prediction with scikit-learn | Designed and deployed customer churn prediction models (XGBoost, LightGBM) achieving 87% AUC, reducing churn by 14% |
-| Created dashboards in Tableau | Automated A/B testing framework reducing experiment cycle time by 40% |
-""",
-        "gap_analysis": {
-            "missing_skills": ["PyTorch", "TensorFlow", "Snowflake", "DVC"],
-            "matching_skills": ["Python", "pandas", "scikit-learn", "SQL", "statistics", "Git"],
-            "keyword_gaps": ["MLOps", "model drift", "credit risk"],
-            "severity_score": 0.35,
-            "summary": "Strong Python/ML foundation. Key gaps: deep learning frameworks, MLOps tooling, cloud data warehouses.",
-            "terms_to_rephrase": [
-                {"current_term": "predictive models", "suggested_term": "XGBoost/LightGBM classification models", "reason": "More specific and ATS-scanned"},
-            ],
-            "undersold_experiences": [
-                {"experience_index": 0, "reason": "REST API deployment not emphasized", "suggestion": "Highlight Docker + production deployment"}
-            ],
-        },
-        "job_requirements": {
-            "required_skills": ["Python", "pandas", "scikit-learn", "XGBoost", "LightGBM", "SQL", "TensorFlow", "PyTorch", "Docker", "Kubernetes"],
-            "ats_keywords": ["MLOps", "A/B testing", "credit risk", "model deployment", "MLflow", "SHAP", "BigQuery"],
-            "experience_level": "senior",
-            "tech_stack": ["Python", "SQL", "Docker", "Kubernetes", "MLflow", "BigQuery"],
-        },
-        "errors": [],
-        "metadata": {"pdflatex_available": False},
-    }
-
-
-# ── Main App ──────────────────────────────────────────────────────────────────
+# ── Application principale ────────────────────────────────────────────────────
 def main():
-    st.markdown('<div class="main-title">AI ATS Resume Generator</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Generate an ATS-optimized, LaTeX-formatted CV tailored to any job offer — powered by GPT-4o.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Générateur de CV ATS par IA</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Générez un CV optimisé ATS au format LaTeX, adapté à toute offre d\'emploi — propulsé par Gemini.</div>', unsafe_allow_html=True)
 
-    # ── Sidebar ───────────────────────────────────────────────────────────────
-    with st.sidebar:
-        st.header("Configuration")
+    # ── Vérification de la clé API ───────────────────────────────────────────
+    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY", "")
+    api_key_valid = bool(api_key) and api_key != "your_gemini_api_key_here"
 
-        api_key = os.getenv("OPENAI_API_KEY", "")
-        demo_mode = not api_key or api_key == "your_openai_api_key_here"
+    if not api_key_valid:
+        st.markdown(
+            '<div class="error-box">⚠ <strong>Clé API Gemini manquante</strong> : '
+            'renseignez <code>GOOGLE_API_KEY</code> dans le fichier <code>.env</code> '
+            'à la racine du projet, puis relancez l\'application.</div>',
+            unsafe_allow_html=True,
+        )
+        st.stop()
 
-        if demo_mode:
-            st.markdown('<div class="warning-box">⚠ <strong>Demo Mode</strong>: No API key found in <code>.env</code>. Mock results will be shown.</div>', unsafe_allow_html=True)
-            st.markdown("")
-        else:
-            st.markdown('<div class="success-box">✓ OpenAI API key detected</div>', unsafe_allow_html=True)
-            st.markdown("")
+    # ── Étape 1 : Offre d'emploi + CV (côte à côte) ──────────────────────────
+    col_jd, col_cv = st.columns(2, gap="large")
 
-        st.subheader("Job Description")
-        jd_input_method = st.radio("Input method", ["Paste text", "Upload PDF"], horizontal=True, key="jd_method")
+    with col_jd:
+        st.subheader("1. Offre d'emploi")
+        jd_input_method = st.radio(
+            "Méthode de saisie",
+            ["Coller le texte", "Téléverser un PDF"],
+            horizontal=True,
+            key="jd_method",
+            label_visibility="collapsed",
+        )
 
         job_text = ""
-        if jd_input_method == "Paste text":
+        if jd_input_method == "Coller le texte":
             job_text = st.text_area(
-                "Job Description",
-                value=DEMO_JOB if demo_mode else "",
-                height=200,
-                placeholder="Paste the full job description here...",
+                "Offre d'emploi",
+                height=260,
+                placeholder="Collez ici l'offre d'emploi complète...",
                 label_visibility="collapsed",
             )
         else:
-            jd_file = st.file_uploader("Upload Job Description PDF", type=["pdf", "txt"], key="jd_upload")
+            jd_file = st.file_uploader(
+                "Téléverser l'offre d'emploi (PDF)",
+                type=["pdf", "txt"],
+                key="jd_upload",
+                label_visibility="collapsed",
+            )
             if jd_file:
                 try:
                     job_text = _extract_jd_text(jd_file)
-                    st.success(f"Extracted {len(job_text)} characters from {jd_file.name}")
+                    st.success(f"{len(job_text)} caractères extraits de {jd_file.name}")
                 except Exception as e:
-                    st.error(f"Failed to read file: {e}")
+                    st.error(f"Échec de lecture du fichier : {e}")
 
-        st.subheader("Your Resume")
+    with col_cv:
+        st.subheader("2. Votre CV")
         resume_file = st.file_uploader(
-            "Upload Resume (PDF or DOCX)",
+            "Téléverser votre CV (PDF ou DOCX)",
             type=["pdf", "docx", "doc"],
             key="resume_upload",
+            label_visibility="collapsed",
         )
         resume_text = ""
         if resume_file:
             try:
                 resume_text = _extract_resume_text(resume_file)
-                st.success(f"Extracted {len(resume_text)} characters from {resume_file.name}")
+                st.success(f"{len(resume_text)} caractères extraits de {resume_file.name}")
             except Exception as e:
-                st.error(f"Failed to read resume: {e}")
-        elif demo_mode:
-            resume_text = DEMO_RESUME
-            st.info("Using demo resume. Upload your own to test.")
+                st.error(f"Échec de lecture du CV : {e}")
 
-        st.subheader("Preferences")
+    st.markdown("")
 
-        color_hex = st.color_picker("Accent Color", value="#2E86AB")
+    # ── Étape 2 : Préférences (étalées sur 5 colonnes) ───────────────────────
+    st.subheader("3. Personnalisez votre CV")
 
+    template_labels = {"modern": "Moderne", "executive": "Exécutif", "classic": "Classique"}
+    language_labels = {"French": "Français", "English": "Anglais"}
+    conciseness_labels = {"concise": "Concis", "balanced": "Équilibré", "detailed": "Détaillé"}
+
+    pref_col1, pref_col2, pref_col3, pref_col4, pref_col5 = st.columns(5)
+
+    with pref_col1:
         template = st.radio(
-            "Template Style",
+            "Style de modèle",
             options=["modern", "executive", "classic"],
-            format_func=lambda x: x.capitalize(),
-            horizontal=True,
+            format_func=lambda x: template_labels[x],
         )
 
+    with pref_col2:
         language = st.selectbox(
-            "CV Language",
-            options=["English", "French"],
+            "Langue du CV",
+            options=["French", "English"],
             index=0,
+            format_func=lambda x: language_labels[x],
         )
 
+    with pref_col3:
         conciseness = st.select_slider(
-            "Conciseness",
+            "Niveau de concision",
             options=["concise", "balanced", "detailed"],
             value="balanced",
+            format_func=lambda x: conciseness_labels[x],
         )
 
-        include_photo = st.toggle("Include photo", value=False)
-        photo_path = None
-        if include_photo:
-            photo_file = st.file_uploader("Upload Photo (JPG/PNG)", type=["jpg", "jpeg", "png"], key="photo_upload")
-            if photo_file:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=Path(photo_file.name).suffix) as tmp:
-                    tmp.write(photo_file.read())
-                    photo_path = tmp.name
-                st.image(photo_file, width=100, caption="Photo preview")
+    with pref_col4:
+        color_hex = st.color_picker("Couleur d'accent", value="#2E86AB")
 
-        st.markdown("---")
+    with pref_col5:
+        include_photo = st.toggle("Inclure une photo", value=False)
+
+    photo_path = None
+    if include_photo:
+        photo_file = st.file_uploader("Téléverser une photo (JPG/PNG)", type=["jpg", "jpeg", "png"], key="photo_upload")
+        if photo_file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(photo_file.name).suffix) as tmp:
+                tmp.write(photo_file.read())
+                photo_path = tmp.name
+            st.image(photo_file, width=120, caption="Aperçu de la photo")
+
+    st.markdown("")
+
+    # ── Bouton de génération (centré, large) ─────────────────────────────────
+    btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
+    with btn_col2:
         generate_btn = st.button(
-            "Generate ATS Resume",
+            "Générer le CV ATS",
             type="primary",
             use_container_width=True,
             disabled=(not job_text.strip() or not resume_text.strip()),
         )
 
-    # ── Main Content Area ────────────────────────────────────────────────────
+    st.markdown("---")
+
+    # ── Exécution du pipeline ────────────────────────────────────────────────
     if "result" not in st.session_state:
         st.session_state.result = None
 
     if generate_btn:
         if not job_text.strip():
-            st.error("Please provide a job description.")
+            st.error("Veuillez fournir une offre d'emploi.")
         elif not resume_text.strip():
-            st.error("Please upload your resume or provide text.")
+            st.error("Veuillez téléverser votre CV ou en fournir le texte.")
         else:
             preferences = {
                 "color": color_hex,
@@ -392,152 +280,91 @@ def main():
                 "include_photo": include_photo,
             }
 
-            if demo_mode:
-                with st.spinner("Running demo pipeline (no API key — showing mock results)..."):
-                    import time
-                    time.sleep(1.5)
-                    st.session_state.result = _generate_demo_result()
-                    st.session_state.result["metadata"]["demo_mode"] = True
-            else:
-                with st.spinner("Running 8-agent pipeline... This may take 30-90 seconds."):
-                    result = _run_pipeline(job_text, resume_text, preferences, photo_path)
-                    if result:
-                        st.session_state.result = result
+            with st.spinner("Exécution du pipeline à 8 agents... Cela peut prendre 30 à 90 secondes."):
+                result = _run_pipeline(job_text, resume_text, preferences, photo_path)
+                if result:
+                    st.session_state.result = result
 
     result = st.session_state.result
 
     if result is None:
-        # Welcome / onboarding screen
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown("### How it works")
-            st.markdown("""
-1. **Job Parser** — Extracts ATS keywords, skills, and requirements
-2. **Resume Parser** — Structures your existing CV
-3. **Gap Analysis** — Identifies missing skills and opportunities
-4. **ATS Optimizer** — Rewrites sections with targeted keywords
-5. **LaTeX Generator** — Fills a professional template
-6. **PDF Compiler** — Compiles to PDF (requires pdflatex)
-7. **Quality Control** — Scores ATS compatibility
-8. **Report Generator** — Creates detailed optimization report
-            """)
-        with col2:
-            st.markdown("### What you get")
-            st.markdown("""
-- ATS-optimized CV in LaTeX & PDF format
-- Matching score vs. job requirements
-- Keyword coverage analysis
-- Before/after diff of all sections
-- Executive optimization report
-- ATS keywords CSV export
-            """)
-        with col3:
-            st.markdown("### Requirements")
-            st.markdown("""
-- OpenAI API key (GPT-4o)
-- Python 3.11+
-- pdflatex (optional, for PDF)
-- Resume in PDF or DOCX format
-- Job description (paste or PDF)
-
-Set `OPENAI_API_KEY` in `.env` to enable full pipeline.
-            """)
+        st.markdown("""
+<div class="empty-state">
+  <div class="icon">📄</div>
+  <div class="title">Votre CV optimisé apparaîtra ici</div>
+  <div class="hint">Complétez les étapes ci-dessus puis cliquez sur <strong>Générer le CV ATS</strong>.</div>
+</div>
+        """, unsafe_allow_html=True)
         return
 
-    # ── Display Results ───────────────────────────────────────────────────────
+    # ── Affichage des résultats ──────────────────────────────────────────────
     if result.get("errors"):
         for err in result["errors"]:
-            st.warning(f"Pipeline warning: {err}")
+            st.warning(f"Avertissement du pipeline : {err}")
 
-    if result.get("metadata", {}).get("demo_mode"):
-        st.info("Demo mode: results are illustrative. Configure your OpenAI API key for real optimization.")
+    latex_source = result.get("latex_source", "")
+    pdf_path = result.get("pdf_path")
+    report_md = result.get("executive_report", "")
 
-    # Score metrics
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        score = result.get("matching_score") or 0
-        st.metric(
-            "Matching Score",
-            f"{score:.1f}%",
-            delta=f"+{score - 50:.1f}%" if score > 50 else f"{score - 50:.1f}%",
-            delta_color="normal",
-        )
-    with col2:
-        coverage = result.get("keyword_coverage") or 0
-        st.metric("Keyword Coverage", f"{coverage:.1f}%")
-    with col3:
-        kw_added = result.get("keywords_added") or []
-        st.metric("Keywords Added", len(kw_added))
-    with col4:
-        warnings = result.get("metadata", {}).get("qc_warnings", [])
-        st.metric("QC Warnings", len(warnings), delta_color="inverse")
+    # ── Téléchargements (action principale, en haut) ─────────────────────────
+    st.subheader("Votre CV optimisé est prêt")
+    col_dl1, col_dl2, col_dl3 = st.columns(3)
+
+    with col_dl1:
+        if pdf_path and Path(pdf_path).exists():
+            with open(pdf_path, "rb") as f:
+                st.download_button(
+                    label="⬇ Télécharger le PDF",
+                    data=f.read(),
+                    file_name="cv_optimise.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    type="primary",
+                )
+        else:
+            st.button("⬇ Télécharger le PDF", disabled=True, use_container_width=True, help="pdflatex non disponible")
+
+    with col_dl2:
+        if latex_source:
+            st.download_button(
+                label="⬇ Télécharger le .tex",
+                data=latex_source.encode("utf-8"),
+                file_name="cv_optimise.tex",
+                mime="text/x-tex",
+                use_container_width=True,
+            )
+
+    with col_dl3:
+        if report_md:
+            st.download_button(
+                label="⬇ Télécharger le rapport",
+                data=report_md.encode("utf-8"),
+                file_name="rapport_correspondance.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )
+
+    if not result.get("metadata", {}).get("pdflatex_available", True) and not pdf_path:
+        st.markdown('<div class="warning-box">pdflatex introuvable dans le PATH système. Seul le fichier .tex est disponible. Installez TeX Live ou MiKTeX pour activer la compilation PDF.</div>', unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # ── Tabs ──────────────────────────────────────────────────────────────────
+    # ── Onglets de détail ────────────────────────────────────────────────────
     tab_preview, tab_keywords, tab_gap, tab_report, tab_diff = st.tabs([
-        "LaTeX Preview", "Keywords", "Gap Analysis", "Executive Report", "Diff Report"
+        "Aperçu LaTeX", "Mots-clés", "Analyse des écarts", "Rapport exécutif", "Modifications"
     ])
 
-    # Tab 1: LaTeX Preview + Downloads
     with tab_preview:
-        latex_source = result.get("latex_source", "")
-        pdf_path = result.get("pdf_path")
-        tex_path = result.get("metadata", {}).get("tex_path", "")
-
-        if not result.get("metadata", {}).get("pdflatex_available", True) and not pdf_path:
-            st.markdown('<div class="warning-box">pdflatex not found in system PATH. Showing .tex file only. Install TeX Live or MiKTeX to enable PDF compilation.</div>', unsafe_allow_html=True)
-            st.markdown("")
-
-        col_dl1, col_dl2, col_dl3 = st.columns(3)
-
-        with col_dl1:
-            if latex_source:
-                st.download_button(
-                    label="Download .tex",
-                    data=latex_source.encode("utf-8"),
-                    file_name="optimized_resume.tex",
-                    mime="text/x-tex",
-                    use_container_width=True,
-                )
-
-        with col_dl2:
-            if pdf_path and Path(pdf_path).exists():
-                with open(pdf_path, "rb") as f:
-                    st.download_button(
-                        label="Download PDF",
-                        data=f.read(),
-                        file_name="optimized_resume.pdf",
-                        mime="application/pdf",
-                        use_container_width=True,
-                    )
-            else:
-                st.button("Download PDF", disabled=True, use_container_width=True, help="pdflatex not available")
-
-        with col_dl3:
-            report_md = result.get("executive_report", "")
-            if report_md:
-                st.download_button(
-                    label="Download Report (.md)",
-                    data=report_md.encode("utf-8"),
-                    file_name="matching_report.md",
-                    mime="text/markdown",
-                    use_container_width=True,
-                )
-
         if latex_source:
             st.code(latex_source, language="latex", line_numbers=True)
         else:
-            st.info("No LaTeX source generated. Check for errors above.")
+            st.info("Aucune source LaTeX générée. Consultez les erreurs ci-dessus.")
 
-    # Tab 2: Keywords table
     with tab_keywords:
         job_req = result.get("job_requirements") or {}
         kw_added = result.get("keywords_added") or []
-        gap = result.get("gap_analysis") or {}
         optimized = result.get("optimized_content") or {}
 
-        # Build keyword dataframe
         full_text = " ".join([
             optimized.get("summary", ""),
             " ".join(optimized.get("skills", [])),
@@ -547,15 +374,15 @@ Set `OPENAI_API_KEY` in `.env` to enable full pipeline.
         for kw in job_req.get("required_skills", []):
             found = kw.lower() in full_text
             added = kw in kw_added
-            rows.append({"Keyword": kw, "Category": "Required Skill", "In Resume": "Yes" if found else "No", "Added by AI": "Yes" if added else ""})
+            rows.append({"Mot-clé": kw, "Catégorie": "Compétence requise", "Dans le CV": "Oui" if found else "Non", "Ajouté par l'IA": "Oui" if added else ""})
         for kw in job_req.get("nice_to_have_skills", []):
             found = kw.lower() in full_text
-            rows.append({"Keyword": kw, "Category": "Nice to Have", "In Resume": "Yes" if found else "No", "Added by AI": ""})
+            rows.append({"Mot-clé": kw, "Catégorie": "Souhaitée", "Dans le CV": "Oui" if found else "Non", "Ajouté par l'IA": ""})
         for kw in job_req.get("ats_keywords", []):
-            if kw not in [r["Keyword"] for r in rows]:
+            if kw not in [r["Mot-clé"] for r in rows]:
                 found = kw.lower() in full_text
                 added = kw in kw_added
-                rows.append({"Keyword": kw, "Category": "ATS Keyword", "In Resume": "Yes" if found else "No", "Added by AI": "Yes" if added else ""})
+                rows.append({"Mot-clé": kw, "Catégorie": "Mot-clé ATS", "Dans le CV": "Oui" if found else "Non", "Ajouté par l'IA": "Oui" if added else ""})
 
         if rows:
             df = pd.DataFrame(rows)
@@ -564,78 +391,74 @@ Set `OPENAI_API_KEY` in `.env` to enable full pipeline.
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "In Resume": st.column_config.TextColumn("In Resume"),
-                    "Added by AI": st.column_config.TextColumn("Added by AI"),
+                    "Dans le CV": st.column_config.TextColumn("Dans le CV"),
+                    "Ajouté par l'IA": st.column_config.TextColumn("Ajouté par l'IA"),
                 },
             )
 
-            # Download keywords CSV
             csv_path = PROJECT_ROOT / "outputs" / "ats_keywords.csv"
             if csv_path.exists():
                 with open(csv_path, "rb") as f:
                     st.download_button(
-                        "Download Keywords CSV",
+                        "Télécharger les mots-clés (CSV)",
                         data=f.read(),
-                        file_name="ats_keywords.csv",
+                        file_name="mots_cles_ats.csv",
                         mime="text/csv",
                     )
         else:
-            st.info("No keyword data available.")
+            st.info("Aucune donnée de mots-clés disponible.")
 
-    # Tab 3: Gap Analysis
     with tab_gap:
         gap = result.get("gap_analysis") or {}
         if gap:
-            st.markdown(f"**Analysis Summary:** {gap.get('summary', '')}")
-            st.markdown(f"**Severity Score:** {gap.get('severity_score', 0):.2f} (0=perfect, 1=mismatch)")
+            st.markdown(f"**Résumé de l'analyse :** {gap.get('summary', '')}")
+            st.markdown(f"**Score de sévérité :** {gap.get('severity_score', 0):.2f} (0 = parfait, 1 = non-correspondance)")
             st.markdown("")
 
             col_gap1, col_gap2 = st.columns(2)
             with col_gap1:
                 missing = gap.get("missing_skills", [])
                 if missing:
-                    st.markdown("**Missing Required Skills**")
+                    st.markdown("**Compétences requises manquantes**")
                     for s in missing:
                         st.markdown(f"- {s}")
 
             with col_gap2:
                 matching = gap.get("matching_skills", [])
                 if matching:
-                    st.markdown("**Matching Skills**")
+                    st.markdown("**Compétences correspondantes**")
                     for s in matching:
                         st.markdown(f"- {s}")
 
             terms = gap.get("terms_to_rephrase", [])
             if terms:
-                st.markdown("**Terms Rephrased for ATS**")
+                st.markdown("**Termes reformulés pour l'ATS**")
                 terms_df = pd.DataFrame(terms)
                 st.dataframe(terms_df, use_container_width=True, hide_index=True)
 
             undersold = gap.get("undersold_experiences", [])
             if undersold:
-                st.markdown("**Undersold Experiences Enhanced**")
+                st.markdown("**Expériences sous-valorisées améliorées**")
                 for item in undersold:
-                    with st.expander(f"Experience #{item.get('experience_index', 0)+1}"):
-                        st.write(f"**Reason:** {item.get('reason', '')}")
-                        st.write(f"**Suggestion:** {item.get('suggestion', '')}")
+                    with st.expander(f"Expérience n°{item.get('experience_index', 0)+1}"):
+                        st.write(f"**Raison :** {item.get('reason', '')}")
+                        st.write(f"**Suggestion :** {item.get('suggestion', '')}")
         else:
-            st.info("No gap analysis data available.")
+            st.info("Aucune analyse des écarts disponible.")
 
-    # Tab 4: Executive Report
     with tab_report:
         report = result.get("executive_report", "")
         if report:
             st.markdown(report)
         else:
-            st.info("No executive report generated.")
+            st.info("Aucun rapport exécutif généré.")
 
-    # Tab 5: Diff Report
     with tab_diff:
         diff = result.get("diff_report", "")
         if diff:
             st.markdown(diff)
         else:
-            st.info("No diff report generated.")
+            st.info("Aucun rapport de modifications généré.")
 
 
 if __name__ == "__main__":

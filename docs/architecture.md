@@ -89,7 +89,7 @@ The `ATSState` TypedDict flows through every node. Key fields:
 ### 1. JobParserAgent
 **Input:** `job_description_text`  
 **Output:** `job_requirements`  
-Uses GPT-4o with a structured JSON prompt to extract required/nice-to-have skills, ATS keywords, experience level, responsibilities, tech stack, and company values. Falls back to regex-based extraction if the LLM is unavailable.
+Uses Gemini with a structured JSON prompt to extract required/nice-to-have skills, ATS keywords, experience level, responsibilities, tech stack, and company values. Falls back to regex-based extraction if the LLM is unavailable.
 
 ### 2. ResumeParserAgent
 **Input:** `resume_text`  
@@ -104,7 +104,7 @@ Computes `missing_skills`, `matching_skills`, `undersold_experiences` (roles tha
 ### 4. ATSOptimizerAgent
 **Input:** `resume_structured`, `gap_analysis`, `job_requirements`, `user_preferences`  
 **Output:** `optimized_content`, `keywords_added`  
-Rewrites every CV section using GPT-4o: integrates ATS keywords naturally, adds action verbs + metrics, rephrases undersold experiences. Output mirrors `resume_structured` structure. Preserves `personal_info` unchanged.
+Rewrites every CV section using Gemini: integrates ATS keywords naturally, adds action verbs + metrics, rephrases undersold experiences. Output mirrors `resume_structured` structure. Preserves `personal_info` unchanged.
 
 ### 5. LaTeXTemplateAgent
 **Input:** `optimized_content`, `user_preferences`, `photo_path`  
@@ -130,7 +130,7 @@ Generates a markdown executive report with scores, rephrased terms, and recommen
 
 ## LLM Configuration
 
-All agents that use GPT-4o receive the same `ChatOpenAI` instance (temperature=0.3, max_tokens=4096), created by the orchestrator from `.env` settings. Every LLM call is wrapped in `_safe_llm_invoke` which catches exceptions and invokes a fallback.
+All agents that use Gemini receive the same `ChatGoogleGenerativeAI` instance (temperature=0.3, max_output_tokens=4096), created by the orchestrator from `.env` settings. Every LLM call is wrapped in `_safe_llm_invoke` which catches exceptions and invokes a fallback.
 
 ---
 
@@ -175,7 +175,7 @@ outputs/
 | Component | Library |
 |---|---|
 | Orchestration | LangGraph (StateGraph) |
-| LLM | OpenAI GPT-4o via langchain-openai |
+| LLM | Google Gemini via langchain-google-genai |
 | PDF Parsing | PyMuPDF (fitz) |
 | DOCX Parsing | python-docx |
 | LaTeX Compilation | subprocess + pdflatex |

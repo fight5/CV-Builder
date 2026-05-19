@@ -4,7 +4,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 
-from langchain_openai import ChatOpenAI
+from langchain_core.language_models import BaseChatModel
 
 
 class BaseAgent(ABC):
@@ -13,7 +13,7 @@ class BaseAgent(ABC):
     name: str = "base_agent"
     description: str = "Abstract base agent"
 
-    def __init__(self, llm: Optional[ChatOpenAI] = None, verbose: bool = False):
+    def __init__(self, llm: Optional[BaseChatModel] = None, verbose: bool = False):
         self.llm = llm
         self.verbose = verbose
         self.logger = logging.getLogger(f"ats.{self.name}")

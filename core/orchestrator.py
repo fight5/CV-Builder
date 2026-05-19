@@ -6,7 +6,8 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
-from langchain_openai import ChatOpenAI
+from langchain_core.language_models import BaseChatModel
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from .state import ATSState
 from agents.job_parser_agent import JobParserAgent
@@ -22,18 +23,18 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
-def _build_llm() -> Optional[ChatOpenAI]:
-    """Instantiate the LLM from environment variables."""
-    api_key = os.getenv("OPENAI_API_KEY", "")
-    model = os.getenv("OPENAI_MODEL", "gpt-4o")
-    if not api_key or api_key == "your_openai_api_key_here":
-        logger.warning("OPENAI_API_KEY not set. Agents will use fallback logic.")
+def _build_llm() -> Optional[BaseChatModel]:
+    """Instantiate the Gemini LLM from environment variables."""
+    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY", "")
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+    if not api_key or api_key == "your_gemini_api_key_here":
+        logger.warning("GOOGLE_API_KEY/GEMINI_API_KEY not set. Agents will use fallback logic.")
         return None
-    return ChatOpenAI(
+    return ChatGoogleGenerativeAI(
         model=model,
-        api_key=api_key,
+        google_api_key=api_key,
         temperature=0.3,
-        max_tokens=4096,
+        max_output_tokens=4096,
     )
 
 

@@ -1,6 +1,6 @@
 # AI ATS Resume Generator Agent
 
-Un pipeline multi-agents propulsé par GPT-4o qui génère automatiquement un CV optimisé pour les systèmes ATS (Applicant Tracking Systems), exporté en PDF via LaTeX.
+Un pipeline multi-agents propulsé par Gemini qui génère automatiquement un CV optimisé pour les systèmes ATS (Applicant Tracking Systems), exporté en PDF via LaTeX.
 
 ---
 
@@ -25,7 +25,7 @@ Vous collez une offre d'emploi et uploadez votre CV existant. En moins de deux m
 JobParserAgent          → Extraction structurée de l'offre d'emploi
 ResumeParserAgent       → Structuration du CV existant
 GapAnalysisAgent        → Analyse des écarts et opportunités
-ATSOptimizerAgent       → Réécriture ATS-optimisée par GPT-4o
+ATSOptimizerAgent       → Réécriture ATS-optimisée par Gemini
 LaTeXTemplateAgent      → Injection du contenu dans le template
 PDFCompilerAgent        → Compilation pdflatex (×2 passes)
 QualityControlAgent     → Score de compatibilité ATS
@@ -41,7 +41,7 @@ Chaque agent hérite de `BaseAgent`, dispose de son propre logger, et intègre u
 ### Prérequis
 
 - Python 3.11+
-- Une clé API OpenAI (GPT-4o)
+- Une clé API Google Gemini ([obtenir une clé](https://aistudio.google.com/app/apikey))
 - pdflatex (optionnel, pour la compilation PDF) — inclus dans TeX Live ou MiKTeX
 
 ### Installation
@@ -61,7 +61,7 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Éditez .env et renseignez votre OPENAI_API_KEY
+# Éditez .env et renseignez votre GOOGLE_API_KEY (clé Gemini)
 ```
 
 ### Lancement de l'interface Streamlit
@@ -76,7 +76,7 @@ Ouvrez ensuite [http://localhost:8501](http://localhost:8501) dans votre navigat
 
 ```bash
 cp .env.example .env
-# Renseignez OPENAI_API_KEY dans .env
+# Renseignez GOOGLE_API_KEY dans .env
 
 docker-compose up --build
 ```
@@ -113,7 +113,7 @@ project_2_ai_ats_resume_generator/
 │   ├── job_parser_agent.py     Analyse de l'offre d'emploi
 │   ├── resume_parser_agent.py  Structuration du CV existant
 │   ├── gap_analysis_agent.py   Analyse des écarts
-│   ├── ats_optimizer_agent.py  Réécriture ATS par GPT-4o
+│   ├── ats_optimizer_agent.py  Réécriture ATS par Gemini
 │   ├── latex_template_agent.py Injection dans le template LaTeX
 │   ├── pdf_compiler_agent.py   Compilation pdflatex
 │   ├── quality_control_agent.py Scoring ATS
@@ -143,24 +143,17 @@ project_2_ai_ats_resume_generator/
 
 ## Interface Streamlit
 
-Le sidebar gauche permet de :
-- Coller ou uploader une offre d'emploi (PDF ou texte)
-- Uploader votre CV (PDF ou DOCX)
-- Choisir une couleur d'accentuation pour le CV
-- Sélectionner un style de template (Modern / Executive / Classic)
-- Choisir la langue du CV (Français / Anglais)
-- Régler le niveau de concision (concis / équilibré / détaillé)
-- Inclure une photo (upload JPG/PNG)
+La page principale présente trois étapes côte à côte :
+- **1. Offre d'emploi** : coller le texte ou téléverser un PDF
+- **2. Votre CV** : téléverser un PDF ou DOCX
+- **3. Personnalisez** : style de template (Modern / Executive / Classic), langue (Français / Anglais), niveau de concision (concis / équilibré / détaillé), couleur d'accentuation, photo optionnelle
 
-Après génération, la zone principale affiche :
-- **Métriques** : Score ATS, Couverture mots-clés, Mots-clés ajoutés, Alertes QC
-- **Onglet LaTeX Preview** : code source `.tex` + boutons de téléchargement (.tex, .pdf, rapport)
-- **Onglet Keywords** : tableau interactif de tous les mots-clés avec statut "trouvé / manquant"
-- **Onglet Gap Analysis** : compétences manquantes, correspondances, termes reformulés
-- **Onglet Executive Report** : rapport markdown complet avec recommandations
-- **Onglet Diff Report** : comparaison avant/après pour chaque section
-
-Le mode démo (sans clé API) affiche des résultats illustratifs pour tester l'interface.
+Après génération, les boutons de téléchargement (PDF, .tex, rapport) apparaissent en haut, suivis de cinq onglets :
+- **Aperçu LaTeX** : code source `.tex`
+- **Mots-clés** : tableau interactif de tous les mots-clés avec statut "trouvé / manquant"
+- **Analyse des écarts** : compétences manquantes, correspondances, termes reformulés
+- **Rapport exécutif** : rapport markdown complet avec recommandations
+- **Modifications** : comparaison avant/après pour chaque section
 
 ---
 
@@ -183,7 +176,7 @@ Fichiers générés dans le dossier `outputs/` :
 | Composant | Technologie |
 |---|---|
 | Orchestration | LangGraph (StateGraph) |
-| LLM | OpenAI GPT-4o via langchain-openai |
+| LLM | Google Gemini via langchain-google-genai |
 | Parsing PDF | PyMuPDF (fitz) |
 | Parsing DOCX | python-docx |
 | Export PDF | pdflatex (TeX Live / MiKTeX) |
