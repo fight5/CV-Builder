@@ -1,13 +1,21 @@
-% Template "OPTIMUM" — réplique exacte du design de l'utilisateur.
-% Les `\IfFileExists` permettent au document de compiler même si les
-% logos/photos sont absents — Gemini ne touche jamais à la structure.
+% Template "OPTIMUM" — design utilisateur, paramétrable.
+% Placeholders dynamiques injectés par modules/optimum_pipeline.py :
+%   {{ACCENT_RGB}}      ex. "0,102,153"
+%   {{LEFTBG_RGB}}      ex. "23,46,74"
+%   {{BABEL_LANG}}      "french" | "english"
+%   {{PHOTO_BLOCK}}     bloc \includegraphics ou vide si pas de photo
+%   {{FULL_NAME}}, {{HEADER_TITLE}}, {{EMAIL}}, {{LINKEDIN_URL}},
+%   {{LINKEDIN_HANDLE}}, {{PHONE}}, {{LOCATION}}, {{SUMMARY}}
+%   {{SKILLS_ITEMS}}, {{TOOLS_ITEMS}}, {{LANGUAGES_ITEMS}},
+%   {{CERTIFICATIONS_ITEMS}}, {{QUALITIES_ITEMS}}, {{INTERESTS_ITEMS}},
+%   {{AWARDS_ITEMS}}, {{EXPERIENCES_BLOCK}}, {{EDUCATION_BLOCK}}
 
 \documentclass[9.5pt,a4paper]{article}
 
 \usepackage[margin=1.3cm]{geometry}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage[french]{babel}
+\usepackage[{{BABEL_LANG}}]{babel}
 \usepackage{graphicx}
 \usepackage{xcolor}
 \usepackage{enumitem}
@@ -16,9 +24,9 @@
 \usepackage{parskip}
 \usepackage{amssymb}
 
-\definecolor{accent}{RGB}{0,102,153}
+\definecolor{accent}{RGB}{ {{ACCENT_RGB}} }
 \definecolor{text}{RGB}{40,40,40}
-\definecolor{leftbg}{RGB}{23,46,74}
+\definecolor{leftbg}{RGB}{ {{LEFTBG_RGB}} }
 
 \sectionfont{\color{accent}\sffamily\large\bfseries}
 \setlist[itemize]{noitemsep, topsep=0pt, leftmargin=*}
@@ -31,11 +39,7 @@
 \pagenumbering{gobble}
 
 % HEADER ====================================================================
-\begin{minipage}[t]{0.23\textwidth}
-\vspace{0pt}
-\safeimage{photo_didentite.png}{\linewidth}
-\end{minipage}
-\hfill
+{{PHOTO_BLOCK}}
 \begin{minipage}[t]{0.83\textwidth}
 
 {\color{accent}\sffamily\Huge \textbf{ {{FULL_NAME}} }}\\[-1pt]
@@ -67,74 +71,21 @@
 
 \vspace{0.8em}
 
-{\color{white}\sffamily\bfseries COMPÉTENCES}
+{{SKILLS_SECTION}}
 
-\vspace{0.2cm}
+{{TOOLS_SECTION}}
 
-\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
-{{SKILLS_ITEMS}}
-\end{itemize}
+{{LANGUAGES_SECTION}}
 
-\vspace{0.45cm}
+{{CERTIFICATIONS_SECTION}}
 
-{\color{white}\sffamily\bfseries OUTILS}
+{{QUALITIES_SECTION}}
 
-\vspace{0.2cm}
+{{INTERESTS_SECTION}}
 
-\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
-{{TOOLS_ITEMS}}
-\end{itemize}
-
-\vspace{0.45cm}
-
-{\color{white}\sffamily\bfseries LANGUES}
-
-\vspace{0.2cm}
-
-\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
-{{LANGUAGES_ITEMS}}
-\end{itemize}
-
-\vspace{0.45cm}
-
-{\color{white}\sffamily\bfseries CERTIFICATIONS}
-
-\vspace{0.2cm}
-
-\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
-{{CERTIFICATIONS_ITEMS}}
-\end{itemize}
-
-\vspace{0.45cm}
-
-{\color{white}\sffamily\bfseries QUALITÉS}
-
-\vspace{0.2cm}
-
-\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
-{{QUALITIES_ITEMS}}
-\end{itemize}
-
-\vspace{0.5cm}
-
-{\color{white}\sffamily\bfseries CENTRES D'INTÉRÊT}
-
-\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
-{{INTERESTS_ITEMS}}
-\end{itemize}
-
-\vspace{0.45cm}
-
-{\color{white}\sffamily\bfseries RÉCOMPENSES}
-
-\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
-{{AWARDS_ITEMS}}
-\end{itemize}
+{{AWARDS_SECTION}}
 
 \vspace{0.15cm}
-\begin{center}
-\safeimage{Linkedinlogo.PNG}{0.25\textwidth}
-\end{center}
 
 \end{minipage}
 }
@@ -144,12 +95,12 @@
 \color{text}
 
 % EXPERIENCE ===============================================================
-\section*{Expériences professionnelles}
+\section*{ {{EXPERIENCE_HEADING}} }
 
 {{EXPERIENCES_BLOCK}}
 
 % FORMATION ================================================================
-\section*{Formation}
+\section*{ {{EDUCATION_HEADING}} }
 
 {{EDUCATION_BLOCK}}
 

@@ -1,0 +1,73 @@
+% Template "MINIMAL" — single-column, ATS-pure, sobre.
+% Mêmes placeholders que optimum.tex (un sous-ensemble suffit).
+
+\documentclass[10.5pt,a4paper]{article}
+
+\usepackage[margin=1.6cm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[{{BABEL_LANG}}]{babel}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{sectsty}
+\usepackage[hidelinks]{hyperref}
+\usepackage{parskip}
+\usepackage{titlesec}
+
+\definecolor{accent}{RGB}{ {{ACCENT_RGB}} }
+\definecolor{text}{RGB}{30,30,30}
+
+\titleformat{\section}{\color{accent}\sffamily\large\bfseries}{}{0pt}{}[\titlerule]
+\titlespacing*{\section}{0pt}{1.2em}{0.5em}
+\setlist[itemize]{noitemsep, topsep=0pt, leftmargin=1.1em}
+
+\newcommand{\safeimage}[2]{%
+  \IfFileExists{#1}{\includegraphics[width=#2]{#1}}{}%
+}
+
+\begin{document}
+\pagenumbering{gobble}
+\color{text}
+
+% HEADER ====================================================================
+{{PHOTO_BLOCK}}
+
+\begin{center}
+{\color{accent}\sffamily\Huge\bfseries {{FULL_NAME}} }\\[2pt]
+{\color{accent}\sffamily\Large {{HEADER_TITLE}} }\\[6pt]
+{\small \href{mailto:{{EMAIL}}}{ {{EMAIL}} } $\;|\;$
+\href{ {{LINKEDIN_URL}} }{LinkedIn : {{LINKEDIN_HANDLE}} } $\;|\;$
+{{PHONE}} $\;|\;$ {{LOCATION}} }
+\end{center}
+
+\vspace{0.2em}
+
+{{SUMMARY}}
+
+% EXPERIENCE ===============================================================
+\section*{ {{EXPERIENCE_HEADING}} }
+
+{{EXPERIENCES_BLOCK}}
+
+% FORMATION ================================================================
+\section*{ {{EDUCATION_HEADING}} }
+
+{{EDUCATION_BLOCK}}
+
+% SKILLS / TOOLS / LANGUAGES ===============================================
+{{SKILLS_SECTION_FLAT}}
+
+{{TOOLS_SECTION_FLAT}}
+
+{{LANGUAGES_SECTION_FLAT}}
+
+{{CERTIFICATIONS_SECTION_FLAT}}
+
+{{QUALITIES_SECTION_FLAT}}
+
+{{INTERESTS_SECTION_FLAT}}
+
+{{AWARDS_SECTION_FLAT}}
+
+\end{document}
