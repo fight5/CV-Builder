@@ -81,6 +81,26 @@ cp .env.example .env
 docker-compose up --build
 ```
 
+### Déploiement sur Streamlit Community Cloud
+
+1. Pousser le projet sur un dépôt GitHub public.
+2. Aller sur [share.streamlit.io](https://share.streamlit.io) et cliquer **New app**.
+3. Renseigner :
+   - **Repository** : `votre-org/votre-repo`
+   - **Branch** : `main`
+   - **Main file path** : `app/streamlit_app.py`
+4. Cliquer **Advanced settings → Secrets** et coller :
+   ```toml
+   GOOGLE_API_KEY = "votre_vraie_cle_gemini"
+   GEMINI_MODEL = "gemini-2.5-flash"
+   ```
+5. **Deploy**. Le premier build dure 5 à 10 minutes (installation de TeX Live pour la compilation PDF). Les redéploiements suivants sont rapides grâce au cache.
+
+Fichiers de configuration cloud déjà inclus à la racine du dépôt :
+- [`packages.txt`](packages.txt) — paquets APT (`texlive-*`, `lmodern`) installés par Streamlit Cloud
+- [`runtime.txt`](runtime.txt) — version Python (`python-3.11`)
+- [`.streamlit/secrets.toml.example`](.streamlit/secrets.toml.example) — modèle de secrets
+
 ### Utilisation en Python pur
 
 ```python
