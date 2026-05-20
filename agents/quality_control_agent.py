@@ -35,15 +35,15 @@ class QualityControlAgent(BaseAgent):
         required_skills = job_requirements.get("required_skills", [])
         ats_keywords = job_requirements.get("ats_keywords", [])
 
-        # Build full text blob from optimized content
-        text_parts = [optimized.get("summary", "")]
-        for exp in optimized.get("experiences", []):
-            text_parts.append(exp.get("description", ""))
-            text_parts.extend(exp.get("achievements", []))
-        text_parts.extend(optimized.get("skills", []))
-        for proj in optimized.get("projects", []):
-            text_parts.append(proj.get("description", ""))
-        full_text = " ".join(text_parts)
+        # Build full text blob from optimized content (filter None — LLM may emit nulls)
+        text_parts = [optimized.get("summary") or ""]
+        for exp in optimized.get("experiences") or []:
+            text_parts.append(exp.get("description") or "")
+            text_parts.extend(a for a in (exp.get("achievements") or []) if a)
+        text_parts.extend(s for s in (optimized.get("skills") or []) if s)
+        for proj in optimized.get("projects") or []:
+            text_parts.append(proj.get("description") or "")
+        full_text = " ".join(p for p in text_parts if p)
 
         # 1. Matching score: required skills found in resume
         if required_skills:

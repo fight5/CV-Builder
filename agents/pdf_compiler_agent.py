@@ -64,7 +64,7 @@ class PDFCompilerAgent(BaseAgent):
                     compile_cmd,
                     capture_output=True,
                     text=True,
-                    timeout=120,
+                    timeout=300,
                     cwd=str(OUTPUT_DIR),
                 )
                 if result.returncode != 0:
@@ -82,7 +82,12 @@ class PDFCompilerAgent(BaseAgent):
                             state["metadata"]["compile_error"] = stdout_tail
                             return state
             except subprocess.TimeoutExpired:
-                return self._add_error(state, "pdflatex timed out after 120 seconds.")
+                self._log("pdflatex timed out after 300s; returning .tex file only", "warning")
+                state["pdf_path"] = None
+                state["metadata"] = state.get("metadata", {})
+                state["metadata"]["tex_path"] = str(tex_path)
+                state["metadata"]["compile_error"] = "pdflatex timed out (first MiKTeX run may need to download packages)."
+                return state
             except Exception as e:
                 return self._add_error(state, f"pdflatex subprocess error: {e}")
 

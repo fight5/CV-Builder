@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 def _build_llm() -> Optional[BaseChatModel]:
     """Instantiate the Gemini LLM from environment variables."""
     api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY", "")
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     if not api_key or api_key == "your_gemini_api_key_here":
         logger.warning("GOOGLE_API_KEY/GEMINI_API_KEY not set. Agents will use fallback logic.")
         return None
@@ -34,7 +34,7 @@ def _build_llm() -> Optional[BaseChatModel]:
         model=model,
         google_api_key=api_key,
         temperature=0.3,
-        max_output_tokens=4096,
+        max_output_tokens=8192,
     )
 
 

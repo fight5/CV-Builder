@@ -148,14 +148,14 @@ class LaTeXTemplateAgent(BaseAgent):
         except Exception as e:
             return self._add_error(state, f"Failed to read template: {e}")
 
-        # Extract personal info
-        pi = optimized.get("personal_info", {})
-        name = latex_escape(pi.get("name", "Your Name"))
-        email = latex_escape(pi.get("email", ""))
-        phone = latex_escape(pi.get("phone", ""))
-        linkedin = pi.get("linkedin", "")
-        location = latex_escape(pi.get("location", ""))
-        title = latex_escape(pi.get("title", ""))
+        # Extract personal info (coalesce None to empty string — LLM may return null fields)
+        pi = optimized.get("personal_info") or {}
+        name = latex_escape(pi.get("name") or "Your Name")
+        email = latex_escape(pi.get("email") or "")
+        phone = latex_escape(pi.get("phone") or "")
+        linkedin = pi.get("linkedin") or ""
+        location = latex_escape(pi.get("location") or "")
+        title = latex_escape(pi.get("title") or "")
 
         # LinkedIn: strip URL prefix for display
         linkedin_display = linkedin.replace("https://", "").replace("http://", "").replace("www.", "")
@@ -178,10 +178,11 @@ class LaTeXTemplateAgent(BaseAgent):
         else:
             photo_block = ""
 
-        # Replace color placeholder
+        # Replace color placeholder (use lambda to avoid re.sub treating \d, etc. as backrefs)
+        color_replacement = f"\\definecolor{{maincolor}}{{RGB}}{{{color_rgb}}}"
         template = re.sub(
             r"\\definecolor\{maincolor\}\{RGB\}\{[0-9,]+\}",
-            f"\\definecolor{{maincolor}}{{RGB}}{{{color_rgb}}}",
+            lambda _m: color_replacement,
             template,
         )
 

@@ -8,7 +8,7 @@ services:
       - "8501:8501"
     environment:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-pro}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
       - OUTPUT_DIR=outputs
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
