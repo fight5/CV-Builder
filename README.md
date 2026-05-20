@@ -205,17 +205,21 @@ project_2_ai_ats_resume_generator/
 
 ## Interface Streamlit
 
-La page principale présente trois étapes côte à côte :
-- **1. Offre d'emploi** : coller le texte ou téléverser un PDF
-- **2. Votre CV** : téléverser un PDF ou DOCX
-- **3. Personnalisez** : style de template (Modern / Executive / Classic), langue (Français / Anglais), niveau de concision (concis / équilibré / détaillé), couleur d'accentuation, photo optionnelle
+La page d'accueil expose **2 boutons** :
 
-Après génération, les boutons de téléchargement (PDF, .tex, rapport) apparaissent en haut, suivis de cinq onglets :
-- **Aperçu LaTeX** : code source `.tex`
-- **Mots-clés** : tableau interactif de tous les mots-clés avec statut "trouvé / manquant"
-- **Analyse des écarts** : compétences manquantes, correspondances, termes reformulés
-- **Rapport exécutif** : rapport markdown complet avec recommandations
-- **Modifications** : comparaison avant/après pour chaque section
+1. **Candidature automatique** — automation Playwright (LinkedIn Easy Apply, JobTeaser…).
+2. **CV | Lettre de motivation** — générateur "optimum" Gemini :
+   - Coller l'offre + téléverser un CV (PDF/DOCX)
+   - Cliquer **Générer CV et Lettre de motivation**
+   - Télécharger `CV.pdf` et `Lettre_Motivation.pdf`
+
+Le CV produit utilise le template `templates/optimum.tex` (mise en page deux colonnes — bandeau bleu marine à gauche, expériences à droite). La structure visuelle ne change jamais : Gemini ne remplit que le contenu (titre, résumé, compétences, outils, expériences, formation) avec un objectif **80 % de couverture des mots-clés ATS** de l'offre. Aucune sortie JSON — tout est texte / LaTeX / PDF.
+
+### Prérequis runtime supplémentaires
+
+- `pdflatex` accessible dans le `PATH` (TeX Live, MiKTeX, ou installé via `packages.txt` sur Streamlit Cloud).
+- `GOOGLE_API_KEY` (ou `GEMINI_API_KEY`) défini dans `.env` ou les secrets Streamlit.
+- `GEMINI_MODEL` optionnel (défaut : `gemini-2.5-flash`).
 
 ---
 

@@ -1,756 +1,214 @@
-"""Interface Streamlit pour l'agent Générateur de CV ATS par IA."""
+"""Interface Streamlit — 2 boutons :
+  1. Candidature automatique
+  2. CV | Lettre de motivation  (CV.pdf + Lettre_Motivation.pdf)
+"""
 
-import json
+from __future__ import annotations
+
 import logging
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 import streamlit as st
-import pandas as pd
 
-# S'assurer que la racine du projet est dans le path
+# Path setup ---------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
 
-# Bridge Streamlit Cloud secrets -> environment variables so the orchestrator
-# (which uses os.getenv) works both locally (.env) and on cloud (st.secrets).
+# Bridge Streamlit Cloud secrets -> environment variables.
 try:
     for _k in ("GOOGLE_API_KEY", "GEMINI_API_KEY", "GEMINI_MODEL"):
         if _k in st.secrets and not os.getenv(_k):
             os.environ[_k] = str(st.secrets[_k])
 except (FileNotFoundError, Exception):
-    pass  # No secrets.toml — running locally with .env
+    pass
 
-from core.tools import extract_text_from_pdf, extract_text_from_docx
 from modules import auto_apply_ui
-from modules.letter_pdf import LetterPDFContext, generate_letter_pipeline, build_filename as build_letter_filename
+from modules.optimum_pipeline import extract_cv_text, run_optimum_pipeline
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ── Configuration de la page ──────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Générateur de CV ATS par IA",
+    page_title="CV Builder — Candidature & Optimum",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# ── CSS personnalisé ──────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-.main-title {
-    font-size: 2.2rem;
-    font-weight: 800;
-    color: #2E86AB;
-    margin-bottom: 0.2rem;
-}
-.subtitle {
-    font-size: 1rem;
-    color: #555;
-    margin-bottom: 1.5rem;
-}
-.warning-box {
-    background: #fff3cd;
-    border-left: 4px solid #ffc107;
-    padding: 0.8rem;
-    border-radius: 4px;
-}
-.error-box {
-    background: #f8d7da;
-    border-left: 4px solid #dc3545;
-    padding: 0.8rem;
-    border-radius: 4px;
-}
-.empty-state {
-    text-align: center;
-    padding: 4rem 1rem;
-    color: #888;
-}
-.empty-state .icon {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-}
-.empty-state .title {
-    font-size: 1.2rem;
-    color: #555;
-    margin-bottom: 0.5rem;
-}
-.empty-state .hint {
-    font-size: 0.95rem;
-    color: #999;
-}
+.main-title { font-size: 2.2rem; font-weight: 800; color: #2E86AB; margin-bottom: 0.2rem; }
+.subtitle   { font-size: 1rem; color: #555; margin-bottom: 1.5rem; }
+.error-box  { background:#f8d7da; border-left:4px solid #dc3545; padding:0.8rem; border-radius:4px; }
+.warning-box{ background:#fff3cd; border-left:4px solid #ffc107; padding:0.8rem; border-radius:4px; }
+.empty-state{ text-align:center; padding:3rem 1rem; color:#888; }
+.empty-state .title{ font-size:1.2rem; color:#555; margin-bottom:0.4rem; }
+.empty-state .hint { font-size:0.95rem; color:#999; }
 </style>
 """, unsafe_allow_html=True)
 
 
-def _extract_resume_text(uploaded_file) -> str:
-    """Sauvegarde le fichier téléversé en local temporaire et extrait le texte."""
-    suffix = Path(uploaded_file.name).suffix.lower()
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(uploaded_file.read())
-        tmp_path = tmp.name
-    try:
-        if suffix == ".pdf":
-            return extract_text_from_pdf(tmp_path)
-        elif suffix in (".docx", ".doc"):
-            return extract_text_from_docx(tmp_path)
-        else:
-            return uploaded_file.read().decode("utf-8", errors="ignore")
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
-
-
-def _extract_jd_text(uploaded_file) -> str:
-    """Extrait le texte d'une offre d'emploi depuis un PDF ou un fichier texte."""
-    suffix = Path(uploaded_file.name).suffix.lower()
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(uploaded_file.read())
-        tmp_path = tmp.name
-    try:
-        if suffix == ".pdf":
-            return extract_text_from_pdf(tmp_path)
-        else:
-            with open(tmp_path, "r", encoding="utf-8", errors="ignore") as f:
-                return f.read()
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
-
-
-def _run_pipeline(job_text: str, resume_text: str, preferences: dict, photo_path: str | None):
-    """Importe et exécute le pipeline d'orchestration."""
-    try:
-        from core.orchestrator import run_pipeline
-        return run_pipeline(job_text, resume_text, preferences, photo_path)
-    except ImportError as e:
-        st.error(f"Erreur d'importation : {e}. Vérifiez que toutes les dépendances sont installées.")
-        return None
-    except Exception as e:
-        st.error(f"Erreur du pipeline : {e}")
-        logger.error(f"Erreur du pipeline : {e}", exc_info=True)
-        return None
-
-
-def _slug_for_filename(s: str, max_len: int = 30) -> str:
-    """Slugify simple sans accents pour un nom de fichier propre."""
-    import unicodedata
-    if not s:
-        return ""
-    nfkd = unicodedata.normalize("NFKD", s)
-    ascii_str = "".join(c for c in nfkd if not unicodedata.combining(c))
-    out = []
-    for ch in ascii_str:
-        if ch.isalnum():
-            out.append(ch)
-        elif ch in " -_'":
-            out.append("_")
-    s = "".join(out)
-    while "__" in s:
-        s = s.replace("__", "_")
-    return s.strip("_")[:max_len]
-
-
-def _build_cv_filename(result: dict) -> str:
-    """Construit `Nom_Poste_Entreprise_CV` à partir du résultat du pipeline."""
-    optimized = result.get("optimized_content") or {}
-    job_req = result.get("job_requirements") or {}
-    name = _slug_for_filename((optimized.get("personal_info") or {}).get("name", ""))
-    poste = _slug_for_filename(job_req.get("job_title", ""))
-    entreprise = _slug_for_filename(job_req.get("company_name", ""))
-    parts = [p for p in (name, poste, entreprise) if p]
-    if not parts:
-        return "CV"
-    return "_".join(parts) + "_CV"
-
-
-# ── Page 1 : Génération CV ───────────────────────────────────────────────────
-def _render_cv_generator():
-    st.markdown('<div class="main-title">Générateur de CV ATS par IA</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Générez un CV optimisé ATS au format LaTeX, adapté à toute offre d\'emploi — propulsé par Gemini.</div>', unsafe_allow_html=True)
-
-    # ── Vérification de la clé API ───────────────────────────────────────────
-    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY", "")
-    api_key_valid = bool(api_key) and api_key != "your_gemini_api_key_here"
-
-    if not api_key_valid:
-        st.markdown(
-            '<div class="error-box"><strong>Clé API Gemini manquante</strong> : '
-            'renseignez <code>GOOGLE_API_KEY</code> dans le fichier <code>.env</code> '
-            'à la racine du projet, puis relancez l\'application.</div>',
-            unsafe_allow_html=True,
-        )
-        st.stop()
-
-    # ── Étape 1 : Offre d'emploi + CV (côte à côte) ──────────────────────────
-    col_jd, col_cv = st.columns(2, gap="large")
-
-    with col_jd:
-        st.subheader("1. Offre d'emploi")
-        jd_input_method = st.radio(
-            "Méthode de saisie",
-            ["Coller le texte", "Téléverser un PDF"],
-            horizontal=True,
-            key="jd_method",
-            label_visibility="collapsed",
-        )
-
-        job_text = ""
-        if jd_input_method == "Coller le texte":
-            job_text = st.text_area(
-                "Offre d'emploi",
-                height=260,
-                placeholder="Collez ici l'offre d'emploi complète...",
-                label_visibility="collapsed",
-            )
-        else:
-            jd_file = st.file_uploader(
-                "Téléverser l'offre d'emploi (PDF)",
-                type=["pdf", "txt"],
-                key="jd_upload",
-                label_visibility="collapsed",
-            )
-            if jd_file:
-                try:
-                    job_text = _extract_jd_text(jd_file)
-                    st.success(f"{len(job_text)} caractères extraits de {jd_file.name}")
-                except Exception as e:
-                    st.error(f"Échec de lecture du fichier : {e}")
-
-    with col_cv:
-        st.subheader("2. Votre CV")
-        resume_file = st.file_uploader(
-            "Téléverser votre CV (PDF ou DOCX)",
-            type=["pdf", "docx", "doc"],
-            key="resume_upload",
-            label_visibility="collapsed",
-        )
-        resume_text = ""
-        if resume_file:
-            try:
-                resume_text = _extract_resume_text(resume_file)
-                st.success(f"{len(resume_text)} caractères extraits de {resume_file.name}")
-            except Exception as e:
-                st.error(f"Échec de lecture du CV : {e}")
-
-    st.markdown("")
-
-    # ── Étape 2 : Préférences (étalées sur 5 colonnes) ───────────────────────
-    st.subheader("3. Personnalisez votre CV")
-
-    template_labels = {"modern": "Moderne", "executive": "Exécutif", "classic": "Classique"}
-    language_labels = {"French": "Français", "English": "Anglais"}
-    conciseness_labels = {"concise": "Concis", "balanced": "Équilibré", "detailed": "Détaillé"}
-
-    pref_col1, pref_col2, pref_col3, pref_col4, pref_col5 = st.columns(5)
-
-    with pref_col1:
-        template = st.radio(
-            "Style de modèle",
-            options=["modern", "executive", "classic"],
-            format_func=lambda x: template_labels[x],
-        )
-
-    with pref_col2:
-        language = st.selectbox(
-            "Langue du CV",
-            options=["French", "English"],
-            index=0,
-            format_func=lambda x: language_labels[x],
-        )
-
-    with pref_col3:
-        conciseness = st.select_slider(
-            "Niveau de concision",
-            options=["concise", "balanced", "detailed"],
-            value="balanced",
-            format_func=lambda x: conciseness_labels[x],
-        )
-
-    with pref_col4:
-        color_hex = st.color_picker("Couleur d'accent", value="#2E86AB")
-
-    with pref_col5:
-        include_photo = st.toggle("Inclure une photo", value=False)
-
-    photo_path = None
-    if include_photo:
-        photo_file = st.file_uploader("Téléverser une photo (JPG/PNG)", type=["jpg", "jpeg", "png"], key="photo_upload")
-        if photo_file:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(photo_file.name).suffix) as tmp:
-                tmp.write(photo_file.read())
-                photo_path = tmp.name
-            st.image(photo_file, width=120, caption="Aperçu de la photo")
-
-    st.markdown("")
-
-    # ── Bouton de génération (centré, large) ─────────────────────────────────
-    btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
-    with btn_col2:
-        generate_btn = st.button(
-            "Générer le CV ATS",
-            type="primary",
-            use_container_width=True,
-            disabled=(not job_text.strip() or not resume_text.strip()),
-        )
-
-    st.markdown("---")
-
-    # ── Exécution du pipeline ────────────────────────────────────────────────
-    if "result" not in st.session_state:
-        st.session_state.result = None
-
-    # Mémorise l'offre courante pour pré-remplir la page Lettre.
-    if job_text.strip():
-        st.session_state.last_jd_text = job_text
-
-    if generate_btn:
-        if not job_text.strip():
-            st.error("Veuillez fournir une offre d'emploi.")
-        elif not resume_text.strip():
-            st.error("Veuillez téléverser votre CV ou en fournir le texte.")
-        else:
-            preferences = {
-                "color": color_hex,
-                "template": template,
-                "language": language,
-                "conciseness": conciseness,
-                "include_photo": include_photo,
-            }
-
-            with st.spinner("CV en train d'être généré..."):
-                result = _run_pipeline(job_text, resume_text, preferences, photo_path)
-                if result:
-                    st.session_state.result = result
-
-    result = st.session_state.result
-
-    if result is None:
-        st.markdown("""
-<div class="empty-state">
-  <div class="title">Votre CV optimisé apparaîtra ici</div>
-  <div class="hint">Complétez les étapes ci-dessus puis cliquez sur <strong>Générer le CV ATS</strong>.</div>
-</div>
-        """, unsafe_allow_html=True)
-        return
-
-    # ── Affichage des résultats ──────────────────────────────────────────────
-    if result.get("errors"):
-        for err in result["errors"]:
-            st.warning(f"Avertissement du pipeline : {err}")
-
-    latex_source = result.get("latex_source", "")
-    pdf_path = result.get("pdf_path")
-    report_md = result.get("executive_report", "")
-
-    base_name = _build_cv_filename(result)
-
-    # ── Téléchargements (action principale, en haut) ─────────────────────────
-    st.subheader("Votre CV optimisé est prêt")
-    col_dl1, col_dl2, col_dl3 = st.columns(3)
-
-    with col_dl1:
-        if pdf_path and Path(pdf_path).exists():
-            with open(pdf_path, "rb") as f:
-                st.download_button(
-                    label="Télécharger le PDF",
-                    data=f.read(),
-                    file_name=f"{base_name}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True,
-                    type="primary",
-                )
-        else:
-            st.button("Télécharger le PDF", disabled=True, use_container_width=True, help="pdflatex non disponible")
-
-    with col_dl2:
-        if latex_source:
-            st.download_button(
-                label="Télécharger le .tex",
-                data=latex_source.encode("utf-8"),
-                file_name=f"{base_name}.tex",
-                mime="text/x-tex",
-                use_container_width=True,
-            )
-
-    with col_dl3:
-        if report_md:
-            st.download_button(
-                label="Télécharger le rapport",
-                data=report_md.encode("utf-8"),
-                file_name=f"{base_name}_rapport.md",
-                mime="text/markdown",
-                use_container_width=True,
-            )
-
-    if not result.get("metadata", {}).get("pdflatex_available", True) and not pdf_path:
-        st.markdown('<div class="warning-box">pdflatex introuvable dans le PATH système. Seul le fichier .tex est disponible. Installez TeX Live ou MiKTeX pour activer la compilation PDF.</div>', unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # ── Onglets de détail ────────────────────────────────────────────────────
-    tab_preview, tab_keywords, tab_gap, tab_report, tab_diff = st.tabs([
-        "Aperçu LaTeX", "Mots-clés", "Analyse des écarts", "Rapport exécutif", "Modifications"
-    ])
-
-    with tab_preview:
-        if latex_source:
-            st.code(latex_source, language="latex", line_numbers=True)
-        else:
-            st.info("Aucune source LaTeX générée. Consultez les erreurs ci-dessus.")
-
-    with tab_keywords:
-        job_req = result.get("job_requirements") or {}
-        kw_added = result.get("keywords_added") or []
-        optimized = result.get("optimized_content") or {}
-
-        full_text = " ".join([
-            optimized.get("summary", ""),
-            " ".join(optimized.get("skills", [])),
-        ]).lower()
-
-        rows = []
-        for kw in job_req.get("required_skills", []):
-            found = kw.lower() in full_text
-            added = kw in kw_added
-            rows.append({"Mot-clé": kw, "Catégorie": "Compétence requise", "Dans le CV": "Oui" if found else "Non", "Ajouté par l'IA": "Oui" if added else ""})
-        for kw in job_req.get("nice_to_have_skills", []):
-            found = kw.lower() in full_text
-            rows.append({"Mot-clé": kw, "Catégorie": "Souhaitée", "Dans le CV": "Oui" if found else "Non", "Ajouté par l'IA": ""})
-        for kw in job_req.get("ats_keywords", []):
-            if kw not in [r["Mot-clé"] for r in rows]:
-                found = kw.lower() in full_text
-                added = kw in kw_added
-                rows.append({"Mot-clé": kw, "Catégorie": "Mot-clé ATS", "Dans le CV": "Oui" if found else "Non", "Ajouté par l'IA": "Oui" if added else ""})
-
-        if rows:
-            df = pd.DataFrame(rows)
-            st.dataframe(
-                df,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Dans le CV": st.column_config.TextColumn("Dans le CV"),
-                    "Ajouté par l'IA": st.column_config.TextColumn("Ajouté par l'IA"),
-                },
-            )
-
-            csv_path = PROJECT_ROOT / "outputs" / "ats_keywords.csv"
-            if csv_path.exists():
-                with open(csv_path, "rb") as f:
-                    st.download_button(
-                        "Télécharger les mots-clés (CSV)",
-                        data=f.read(),
-                        file_name="mots_cles_ats.csv",
-                        mime="text/csv",
-                    )
-        else:
-            st.info("Aucune donnée de mots-clés disponible.")
-
-    with tab_gap:
-        gap = result.get("gap_analysis") or {}
-        if gap:
-            st.markdown(f"**Résumé de l'analyse :** {gap.get('summary', '')}")
-            st.markdown(f"**Score de sévérité :** {gap.get('severity_score', 0):.2f} (0 = parfait, 1 = non-correspondance)")
-            st.markdown("")
-
-            col_gap1, col_gap2 = st.columns(2)
-            with col_gap1:
-                missing = gap.get("missing_skills", [])
-                if missing:
-                    st.markdown("**Compétences requises manquantes**")
-                    for s in missing:
-                        st.markdown(f"- {s}")
-
-            with col_gap2:
-                matching = gap.get("matching_skills", [])
-                if matching:
-                    st.markdown("**Compétences correspondantes**")
-                    for s in matching:
-                        st.markdown(f"- {s}")
-
-            terms = gap.get("terms_to_rephrase", [])
-            if terms:
-                st.markdown("**Termes reformulés pour l'ATS**")
-                terms_df = pd.DataFrame(terms)
-                st.dataframe(terms_df, use_container_width=True, hide_index=True)
-
-            undersold = gap.get("undersold_experiences", [])
-            if undersold:
-                st.markdown("**Expériences sous-valorisées améliorées**")
-                for item in undersold:
-                    with st.expander(f"Expérience n°{item.get('experience_index', 0)+1}"):
-                        st.write(f"**Raison :** {item.get('reason', '')}")
-                        st.write(f"**Suggestion :** {item.get('suggestion', '')}")
-        else:
-            st.info("Aucune analyse des écarts disponible.")
-
-    with tab_report:
-        report = result.get("executive_report", "")
-        if report:
-            st.markdown(report)
-        else:
-            st.info("Aucun rapport exécutif généré.")
-
-    with tab_diff:
-        diff = result.get("diff_report", "")
-        if diff:
-            st.markdown(diff)
-        else:
-            st.info("Aucun rapport de modifications généré.")
-
-
-# ── Page 2 : Génération Lettre de motivation ─────────────────────────────────
-def _render_letter_generator():
-    st.markdown('<div class="main-title">Lettre de motivation</div>', unsafe_allow_html=True)
+# ── Page : CV | Lettre de motivation ─────────────────────────────────────────
+def _render_cv_letter():
+    st.markdown('<div class="main-title">CV | Lettre de motivation</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="subtitle">Génération d\'une lettre LaTeX + PDF — indépendante du CV. '
-        'Pré-remplissable avec le profil du CV déjà généré.</div>',
+        '<div class="subtitle">Génération automatique d\'un CV ATS optimisé '
+        '("optimum") et d\'une lettre de motivation personnalisée à partir '
+        'd\'une offre d\'emploi.</div>',
         unsafe_allow_html=True,
     )
 
     api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY", "")
-    api_key_valid = bool(api_key) and api_key != "your_gemini_api_key_here"
-    if not api_key_valid:
+    if not api_key or api_key == "your_gemini_api_key_here":
         st.markdown(
             '<div class="error-box"><strong>Clé API Gemini manquante</strong> : '
-            'renseignez <code>GOOGLE_API_KEY</code> dans <code>.env</code> '
-            'puis relancez l\'application.</div>',
+            'définissez <code>GOOGLE_API_KEY</code> dans <code>.env</code>.</div>',
             unsafe_allow_html=True,
         )
         st.stop()
 
-    # Pré-remplissage si un CV a déjà été généré dans la session.
-    cv_result = st.session_state.get("result") or {}
-    cv_optim = cv_result.get("optimized_content") or {}
-    cv_pi = cv_optim.get("personal_info") or {}
-    cv_jobreq = cv_result.get("job_requirements") or {}
-
-    # ── 1. Coordonnées candidat ─────────────────────────────────────────────
-    st.subheader("1. Vos coordonnées")
-    c1, c2 = st.columns(2)
-    with c1:
-        sender_name = st.text_input("Nom complet", value=cv_pi.get("name", ""))
-        sender_email = st.text_input("Email", value=cv_pi.get("email", ""))
-        sender_phone = st.text_input("Téléphone", value=cv_pi.get("phone", ""))
-    with c2:
-        sender_address = st.text_area(
-            "Adresse postale",
-            value="",
-            height=100,
-            placeholder="12 rue de la République\n75011 Paris",
-            help="Une ligne par ligne — apparaît en haut à gauche.",
-        )
-        sender_city = st.text_input(
-            "Ville (pour 'Paris, le …')",
-            value=cv_pi.get("location", "") or "Paris",
-        )
-
-    # ── 2. Coordonnées destinataire ─────────────────────────────────────────
-    st.subheader("2. Destinataire")
-    r1, r2 = st.columns(2)
-    with r1:
-        recipient_company = st.text_input(
-            "Entreprise",
-            value=cv_jobreq.get("company_name", ""),
-        )
-    with r2:
-        recipient_address = st.text_area(
-            "Adresse de l'entreprise (optionnel)",
-            value="",
-            height=70,
-        )
-
-    # ── 3. Offre & paramètres ───────────────────────────────────────────────
-    st.subheader("3. Offre & paramètres")
-    o1, o2 = st.columns([2, 1])
-    with o1:
-        job_title = st.text_input(
-            "Intitulé du poste",
-            value=cv_jobreq.get("job_title", ""),
-        )
-        job_description = st.text_area(
-            "Description de l'offre",
-            value=st.session_state.get("last_jd_text", ""),
-            height=160,
+    col1, col2 = st.columns(2, gap="large")
+    with col1:
+        st.subheader("1. Offre d'emploi")
+        job_offer = st.text_area(
+            "Offre",
+            height=320,
             placeholder="Collez ici l'offre d'emploi complète…",
+            label_visibility="collapsed",
         )
-    with o2:
-        language = st.selectbox(
-            "Langue",
-            options=["Français", "English"],
-            index=0,
+    with col2:
+        st.subheader("2. CV source")
+        cv_file = st.file_uploader(
+            "Votre CV (PDF ou DOCX)",
+            type=["pdf", "docx", "doc"],
+            label_visibility="collapsed",
+            key="optimum_cv_upload",
         )
-        tone = st.selectbox(
-            "Ton",
-            options=["professional", "enthusiastic", "concise"],
-            format_func=lambda x: {
-                "professional": "Professionnel",
-                "enthusiastic": "Enthousiaste",
-                "concise": "Concis",
-            }[x],
-        )
+        cv_text = ""
+        if cv_file:
+            try:
+                cv_text = extract_cv_text(cv_file)
+                st.success(f"{len(cv_text)} caractères extraits de {cv_file.name}")
+            except Exception as e:
+                st.error(f"Échec d'extraction : {e}")
 
-    # ── 4. CV (pour ancrage) ────────────────────────────────────────────────
-    st.subheader("4. Votre CV (pour ancrer le contenu)")
-    resume_text = ""
-    cv_upload = st.file_uploader(
-        "Téléverser votre CV (PDF ou DOCX)",
-        type=["pdf", "docx", "doc"],
-        key="letter_cv_upload",
-        label_visibility="collapsed",
-    )
-    if cv_upload:
-        resume_text = _extract_resume_text(cv_upload)
-        st.success(f"{len(resume_text)} caractères extraits de {cv_upload.name}")
-    elif cv_result.get("optimized_content"):
-        # Reconstruit un texte minimal depuis le CV optimisé en session.
-        resume_text = json.dumps(cv_optim, ensure_ascii=False)[:6000]
-        st.caption("CV pris depuis la session (CV optimisé déjà généré).")
-
-    # ── 5. Génération ───────────────────────────────────────────────────────
-    btn_col1, btn_col2, _ = st.columns([1, 2, 1])
+    st.markdown("")
+    btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
     with btn_col2:
-        generate = st.button(
-            "Générer la lettre",
+        run = st.button(
+            "Générer CV et Lettre de motivation",
             type="primary",
             use_container_width=True,
-            disabled=not (job_description.strip() and job_title.strip()),
+            disabled=not (job_offer.strip() and cv_text.strip()),
         )
 
     st.markdown("---")
 
-    if "letter_result" not in st.session_state:
-        st.session_state.letter_result = None
+    if "optimum_result" not in st.session_state:
+        st.session_state.optimum_result = None
 
-    if generate:
-        ctx = LetterPDFContext(
-            sender_name=sender_name,
-            sender_address=sender_address,
-            sender_city=sender_city,
-            sender_email=sender_email,
-            sender_phone=sender_phone,
-            recipient_company=recipient_company,
-            recipient_address=recipient_address,
-            job_title=job_title,
-            job_description=job_description,
-            resume_text=resume_text,
-            language=language,
-            tone=tone,
-        )
-        with st.spinner("Lettre en train d'être générée..."):
-            st.session_state.letter_result = generate_letter_pipeline(ctx)
-            st.session_state.letter_ctx = ctx
+    if run:
+        with st.spinner("Génération en cours — CV optimisé puis lettre de motivation…"):
+            try:
+                st.session_state.optimum_result = run_optimum_pipeline(job_offer, cv_text)
+            except Exception as e:
+                st.error(f"Erreur du pipeline : {e}")
+                logger.exception("optimum pipeline failed")
+                st.session_state.optimum_result = None
 
-    result = st.session_state.letter_result
+    result = st.session_state.optimum_result
     if result is None:
         st.markdown("""
 <div class="empty-state">
-  <div class="title">Votre lettre apparaîtra ici</div>
-  <div class="hint">Renseignez les sections ci-dessus puis cliquez sur <strong>Générer la lettre</strong>.</div>
+  <div class="title">Vos documents apparaîtront ici</div>
+  <div class="hint">Renseignez l'offre et téléversez votre CV, puis cliquez sur
+  <strong>Générer CV et Lettre de motivation</strong>.</div>
 </div>
         """, unsafe_allow_html=True)
         return
 
-    for err in result.get("errors", []):
-        st.warning(err)
+    cv_bytes = result.get("cv_pdf_bytes")
+    lm_bytes = result.get("letter_pdf_bytes")
 
-    base = result.get("filename") or "LM"
-    pdf_path = result.get("pdf_path")
-    latex_source = result.get("latex_source", "")
-    body = result.get("body", "")
-
-    st.subheader("Votre lettre est prête")
+    st.subheader("Vos documents sont prêts")
     dl1, dl2 = st.columns(2)
     with dl1:
-        if pdf_path and Path(pdf_path).exists():
-            with open(pdf_path, "rb") as f:
-                st.download_button(
-                    label="Télécharger le PDF",
-                    data=f.read(),
-                    file_name=f"{base}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True,
-                    type="primary",
-                )
-        else:
-            st.button("Télécharger le PDF", disabled=True, use_container_width=True,
-                      help="PDF non généré — voir avertissements")
-    with dl2:
-        if latex_source:
+        if cv_bytes:
             st.download_button(
-                label="Télécharger le .tex",
-                data=latex_source.encode("utf-8"),
-                file_name=f"{base}.tex",
-                mime="text/x-tex",
+                "Télécharger CV.pdf",
+                data=cv_bytes,
+                file_name="CV.pdf",
+                mime="application/pdf",
                 use_container_width=True,
+                type="primary",
             )
+        else:
+            st.button("CV.pdf — non disponible", disabled=True, use_container_width=True)
+            for err in result.get("cv_errors", []):
+                st.warning(err)
+    with dl2:
+        if lm_bytes:
+            st.download_button(
+                "Télécharger Lettre_Motivation.pdf",
+                data=lm_bytes,
+                file_name="Lettre_Motivation.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                type="primary",
+            )
+        else:
+            st.button("Lettre_Motivation.pdf — non disponible",
+                     disabled=True, use_container_width=True)
+            for err in result.get("letter_errors", []):
+                st.warning(err)
 
-    tab_body, tab_latex = st.tabs(["Texte (éditable)", "Source LaTeX"])
-    with tab_body:
-        edited = st.text_area("Corps de la lettre", value=body, height=320, key="letter_body_editable")
-        if edited != body:
-            if st.button("Recompiler avec ce texte"):
-                ctx = st.session_state.get("letter_ctx")
-                if ctx is not None:
-                    ctx.custom_body = edited
-                    with st.spinner("Recompilation..."):
-                        st.session_state.letter_result = generate_letter_pipeline(ctx)
-                    st.rerun()
-    with tab_latex:
-        if latex_source:
-            st.code(latex_source, language="latex", line_numbers=True)
+    st.markdown("---")
+    tab_letter, tab_cv_tex, tab_letter_tex = st.tabs([
+        "Lettre — texte", "Source LaTeX (CV)", "Source LaTeX (Lettre)"
+    ])
+    with tab_letter:
+        st.text_area("Corps de la lettre",
+                     value=result.get("letter_body", ""),
+                     height=320, label_visibility="collapsed")
+    with tab_cv_tex:
+        st.code(result.get("cv_latex", ""), language="latex", line_numbers=True)
+    with tab_letter_tex:
+        st.code(result.get("letter_latex", ""), language="latex", line_numbers=True)
 
 
-# ── Routeur principal ────────────────────────────────────────────────────────
+# ── Routeur principal — 2 boutons ────────────────────────────────────────────
 def main():
-    # Navigation simple en haut de page (préserve session_state entre les pages).
     if "page" not in st.session_state:
-        st.session_state.page = "cv"
+        st.session_state.page = "cv_letter"
 
-    nav_cols = st.columns([1, 1, 1, 5])
+    nav_cols = st.columns([1, 1, 5])
     with nav_cols[0]:
         if st.button(
-            "Génération CV",
-            type="primary" if st.session_state.page == "cv" else "secondary",
-            use_container_width=True,
-        ):
-            st.session_state.page = "cv"
-            st.rerun()
-    with nav_cols[1]:
-        if st.button(
-            "Lettre de motivation",
-            type="primary" if st.session_state.page == "letter" else "secondary",
-            use_container_width=True,
-        ):
-            st.session_state.page = "letter"
-            st.rerun()
-    with nav_cols[2]:
-        if st.button(
-            "Auto Apply",
+            "Candidature automatique",
             type="primary" if st.session_state.page == "auto" else "secondary",
             use_container_width=True,
         ):
             st.session_state.page = "auto"
+            st.rerun()
+    with nav_cols[1]:
+        if st.button(
+            "CV | Lettre de motivation",
+            type="primary" if st.session_state.page == "cv_letter" else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state.page = "cv_letter"
             st.rerun()
 
     st.markdown("---")
 
     if st.session_state.page == "auto":
         auto_apply_ui.render()
-    elif st.session_state.page == "letter":
-        _render_letter_generator()
     else:
-        _render_cv_generator()
+        _render_cv_letter()
 
 
 if __name__ == "__main__":

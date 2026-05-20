@@ -1,0 +1,158 @@
+% Template "OPTIMUM" — réplique exacte du design de l'utilisateur.
+% Les `\IfFileExists` permettent au document de compiler même si les
+% logos/photos sont absents — Gemini ne touche jamais à la structure.
+
+\documentclass[9.5pt,a4paper]{article}
+
+\usepackage[margin=1.3cm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{sectsty}
+\usepackage[hidelinks]{hyperref}
+\usepackage{parskip}
+\usepackage{amssymb}
+
+\definecolor{accent}{RGB}{0,102,153}
+\definecolor{text}{RGB}{40,40,40}
+\definecolor{leftbg}{RGB}{23,46,74}
+
+\sectionfont{\color{accent}\sffamily\large\bfseries}
+\setlist[itemize]{noitemsep, topsep=0pt, leftmargin=*}
+
+\newcommand{\safeimage}[2]{%
+  \IfFileExists{#1}{\includegraphics[width=#2]{#1}}{}%
+}
+
+\begin{document}
+\pagenumbering{gobble}
+
+% HEADER ====================================================================
+\begin{minipage}[t]{0.23\textwidth}
+\vspace{0pt}
+\safeimage{photo_didentite.png}{\linewidth}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.83\textwidth}
+
+{\color{accent}\sffamily\Huge \textbf{ {{FULL_NAME}} }}\\[-1pt]
+{\color{accent}\sffamily\Huge \textbf{ {{HEADER_TITLE}} }}\\[6pt]
+
+\centering
+\sffamily\small
+
+\href{mailto:{{EMAIL}}}{ {{EMAIL}} }
+\quad|\quad
+\href{ {{LINKEDIN_URL}} }{LinkedIn : {{LINKEDIN_HANDLE}} }
+\quad|\quad
+{{PHONE}} \\
+
+{{LOCATION}}
+
+\vspace{6pt}
+
+{{SUMMARY}}
+
+\end{minipage}
+
+\vspace{0.1cm}
+
+% COLUMNS ===================================================================
+\noindent
+\colorbox{leftbg}{
+\begin{minipage}[t]{0.38\textwidth}
+
+\vspace{0.8em}
+
+{\color{white}\sffamily\bfseries COMPÉTENCES}
+
+\vspace{0.2cm}
+
+\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
+{{SKILLS_ITEMS}}
+\end{itemize}
+
+\vspace{0.45cm}
+
+{\color{white}\sffamily\bfseries OUTILS}
+
+\vspace{0.2cm}
+
+\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
+{{TOOLS_ITEMS}}
+\end{itemize}
+
+\vspace{0.45cm}
+
+{\color{white}\sffamily\bfseries LANGUES}
+
+\vspace{0.2cm}
+
+\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
+{{LANGUAGES_ITEMS}}
+\end{itemize}
+
+\vspace{0.45cm}
+
+{\color{white}\sffamily\bfseries CERTIFICATIONS}
+
+\vspace{0.2cm}
+
+\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
+{{CERTIFICATIONS_ITEMS}}
+\end{itemize}
+
+\vspace{0.45cm}
+
+{\color{white}\sffamily\bfseries QUALITÉS}
+
+\vspace{0.2cm}
+
+\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
+{{QUALITIES_ITEMS}}
+\end{itemize}
+
+\vspace{0.5cm}
+
+{\color{white}\sffamily\bfseries CENTRES D'INTÉRÊT}
+
+\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
+{{INTERESTS_ITEMS}}
+\end{itemize}
+
+\vspace{0.45cm}
+
+{\color{white}\sffamily\bfseries RÉCOMPENSES}
+
+\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
+{{AWARDS_ITEMS}}
+\end{itemize}
+
+\vspace{0.15cm}
+\begin{center}
+\safeimage{Linkedinlogo.PNG}{0.25\textwidth}
+\end{center}
+
+\end{minipage}
+}
+\hspace{0.35cm}
+\begin{minipage}[t]{0.58\textwidth}
+
+\color{text}
+
+% EXPERIENCE ===============================================================
+\section*{Expériences professionnelles}
+
+{{EXPERIENCES_BLOCK}}
+
+% FORMATION ================================================================
+\section*{Formation}
+
+{{EDUCATION_BLOCK}}
+
+\end{minipage}
+
+\end{document}

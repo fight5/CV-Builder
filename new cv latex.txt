@@ -1,0 +1,236 @@
+
+\documentclass[9.5pt,a4paper]{article}
+
+\usepackage[margin=1.3cm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{sectsty}
+\usepackage[hidelinks]{hyperref}
+\usepackage{parskip}
+\usepackage{amssymb}
+
+% Couleurs
+\definecolor{accent}{RGB}{0,102,153}
+\definecolor{text}{RGB}{40,40,40}
+\definecolor{leftbg}{RGB}{23,46,74}
+
+\sectionfont{\color{accent}\sffamily\large\bfseries}
+
+\setlist[itemize]{noitemsep, topsep=0pt, leftmargin=*}
+
+\begin{document}
+\pagenumbering{gobble}
+
+% HEADER
+
+\begin{minipage}[t]{0.23\textwidth}
+\vspace{0pt}
+\includegraphics[width=\linewidth]{photo_didentite.png}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.83\textwidth}
+
+{\color{accent}\sffamily\Huge \textbf{Ariel Segoun}}\\[-1pt]
+{\color{accent}\sffamily\Huge \textbf{Data Scientist | Data Analytics}}\\[6pt] le titre exact de l'offre
+
+\centering
+\sffamily\small
+
+\href{mailto:arielsegoun@gmail.com}{arielsegoun@gmail.com}
+\quad|\quad
+\href{https://linkedin.com/in/arielsegoun}{LinkedIn : @arielsegoun}
+\quad|\quad
++33\;7\;60\;25\;14\;87\\
+
+Montpellier, France
+
+\vspace{6pt}
+
+DS avec 2 ans d'expérience dans l’analyse de données,
+la formalisation des besoins métiers et la collaboration entre équipes métiers et équipes IT.
+Spécialisé dans la rédaction de spécifications fonctionnelles,
+la définition de processus cibles et la production d’indicateurs de performance
+pour soutenir la prise de décision.
+
+\end{minipage}
+
+\vspace{0.1cm}
+
+% COLUMNS
+
+\noindent
+\colorbox{leftbg}{
+\begin{minipage}[t]{0.38\textwidth}
+
+\vspace{0.8em}
+
+{\color{white}\sffamily\bfseries COMPÉTENCES}
+
+\vspace{0.2cm}
+
+\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
+\item \textcolor{white}{Business Analysis}
+\item \textcolor{white}{Analyse des besoins métiers}
+\item \textcolor{white}{Rédaction de cahiers des charges}
+\item \textcolor{white}{User stories / spécifications fonctionnelles}
+\item \textcolor{white}{Gestion de projet}
+\item \textcolor{white}{Amélioration des processus}
+\item \textcolor{white}{Power BI / Reporting}
+\item \textcolor{white}{SQL / Analyse de données}
+\item \textcolor{white}{Méthodologies Agile / Scrum}
+\end{itemize}
+
+\vspace{0.45cm}
+
+{\color{white}\sffamily\bfseries OUTILS}
+
+\vspace{0.2cm}
+
+\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
+\item \textcolor{white}{Power BI}
+\item \textcolor{white}{JIRA}
+\item \textcolor{white}{Confluence}
+\item \textcolor{white}{SQL}
+\item \textcolor{white}{Python (pandas)}
+\item \textcolor{white}{SharePoint}
+\end{itemize}
+
+\vspace{0.45cm}
+
+{\color{white}\sffamily\bfseries LANGUES}
+
+\vspace{0.2cm}
+
+\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
+\item \textcolor{white}{Français : natif}
+\item \textcolor{white}{Anglais : C1}
+\end{itemize}
+
+\vspace{0.45cm}
+
+{\color{white}\sffamily\bfseries CERTIFICATIONS}
+
+\vspace{0.2cm}
+
+\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
+\item \textcolor{white}{Dataiku ML Practitioner}
+\item \textcolor{white}{Data Engineering Zoomcamp}
+\item \textcolor{white}{Azure AI Fundamentals}
+\end{itemize}
+
+\vspace{0.45cm}
+
+{\color{white}\sffamily\bfseries QUALITÉS}
+
+\vspace{0.2cm}
+
+\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
+\item \textcolor{white}{Communication claire}
+\item \textcolor{white}{Esprit analytique}
+\item \textcolor{white}{Pédagogie}
+\item \textcolor{white}{Animation d’ateliers}
+\end{itemize}
+
+\vspace{0.5cm}
+
+{\color{white}\sffamily\bfseries CENTRES D'INTÉRÊT}
+
+\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
+\item \textcolor{white}{Data Analytics}
+\item \textcolor{white}{Innovation technologique}
+\item \textcolor{white}{Football}
+\end{itemize}
+
+\vspace{0.45cm}
+
+{\color{white}\sffamily\bfseries RÉCOMPENSES}
+
+\begin{itemize}[label=\textcolor{white}{$\blacktriangleright$}]
+\item \textcolor{white}{Prix coup de cœur — Hackathon Sète 2023}
+\item \textcolor{white}{Prix d’excellence — BAC BENIN 2018}
+\end{itemize}
+
+
+\vspace{0.15cm}
+\begin{center}
+\includegraphics[width=0.25\textwidth]{Linkedinlogo.PNG}
+\end{center}
+
+\end{minipage}
+}
+\hspace{0.35cm}
+\begin{minipage}[t]{0.58\textwidth}
+
+\color{text}
+
+% EXPERIENCE
+
+\section*{Expériences professionnelles}
+
+\textbf{Machine Learning Engineer / Data Scientist — Thales Alenia Space}
+
+\emph{Sep 2024 – Nov 2025}
+\hfill
+\includegraphics[width=0.20\textwidth]{Thales.png}
+
+\begin{itemize}[label=\textcolor{accent}{$\blacktriangleright$}]
+\item Recueil et analyse des besoins métiers auprès de 6 équipes de production et supply chain.
+\item Rédaction de spécifications fonctionnelles et formalisation de user stories pour les équipes IT.
+\item Analyse de plus de 2 millions de données industrielles afin d’identifier les causes des pannes de production.
+\item Définition d’indicateurs de performance et conception de dashboards Power BI pour le suivi opérationnel.
+\item Participation à la stratégie de tests : plan de tests, cas de tests et recettes fonctionnelles.
+\item Animation d’ateliers métiers et accompagnement des équipes dans la conduite du changement.
+\end{itemize}
+
+\vspace{0.1cm}
+
+\textbf{Data Scientist / Business Analyst — Sanofi}
+
+\emph{Sep 2023 – Août 2024}
+\hfill
+\includegraphics[width=0.20\textwidth]{Sanofi.png}
+
+\begin{itemize}[label=\textcolor{accent}{$\blacktriangleright$}]
+\item Recueil des besoins utilisateurs et rédaction de cahiers des charges fonctionnels.
+\item Automatisation de processus SharePoint et optimisation du traitement des données réduisant les délais de 40\%.
+\item Mise en place de reportings analytiques et indicateurs de performance pour les équipes R\&D.
+\item Collaboration avec les équipes IT pour la traduction des besoins métiers en solutions techniques.
+\item Formation de plus de 20 utilisateurs aux nouveaux outils de reporting et animation d’ateliers métiers.
+\end{itemize}
+
+\vspace{0.1cm}
+
+\textbf{Data Engineer — Safran Electrical \& Power}
+
+\emph{Jan 2022 – Déc 2022}
+\hfill
+\includegraphics[width=0.20\textwidth]{safran.png}
+
+\begin{itemize}[label=\textcolor{accent}{$\blacktriangleright$}]
+\item Analyse et structuration de données industrielles issues de plusieurs systèmes d'information.
+\item Développement de flux ETL et amélioration des processus de collecte de données.
+\item Conception de tableaux de bord décisionnels pour le suivi de la performance industrielle.
+\item Collaboration avec équipes métiers et IT pour améliorer la qualité des données et les processus.
+\end{itemize}
+
+% FORMATION
+
+\section*{Formation}
+
+\textbf{Diplôme d’Ingénieur — Data Science \& Engineering — EPF Montpellier}                      \emph{2021 – 2024}
+\hfill
+\includegraphics[width=0.10\textwidth]{EPF.png}
+
+\vspace{0.2cm}
+
+\textbf{Classes Préparatoires MPSI — Institut International 2iE}
+
+\emph{2019 – 2021}
+
+\end{minipage}
+
+\end{document}
