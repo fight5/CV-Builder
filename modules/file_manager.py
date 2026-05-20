@@ -85,7 +85,7 @@ def read_json(path: Path, default: Any = None) -> Any:
         return default
 
 
-# ── Stop-flag : communication UI ↔ subprocess ────────────────────────────────
+# ── Stop-flag : communication UI <-> subprocess ──────────────────────────────
 def request_stop() -> None:
     """Touche le fichier STOP. Le subprocess Playwright le polle entre actions."""
     config.STOP_FLAG.parent.mkdir(parents=True, exist_ok=True)

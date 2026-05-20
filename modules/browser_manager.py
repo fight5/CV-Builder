@@ -189,7 +189,7 @@ class BrowserSession:
             time.sleep(1)
 
         self.save_cookies()
-        self.log("info", f"Session sauvegardée → {self._cookies_path()}")
+        self.log("info", f"Session sauvegardée : {self._cookies_path()}")
 
 
 # ── Logger JSONL : utilisé par le subprocess pour streamer ses événements ────

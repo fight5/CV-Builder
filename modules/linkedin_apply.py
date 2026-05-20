@@ -5,10 +5,7 @@ Pour les formulaires multi-étapes complexes ou avec questions custom, on
 abandonne proprement (status='skipped') plutôt que de soumettre du contenu
 inventé.
 
-⚠ ATTENTION : automatiser LinkedIn viole les CGU (User Agreement §8.2).
-Risque réel de bannissement définitif du compte. À tes risques et périls.
-
-⚠ Les sélecteurs LinkedIn changent souvent. Vérifie-les si tu observes
+NOTE: Les selecteurs LinkedIn changent souvent. Verifie-les si tu observes
 des skipped massifs.
 """
 
@@ -148,7 +145,7 @@ def apply_to_job(
     session.human_pause()
     session.check_stop()
 
-    # Boucle "Suivant" → "Soumettre". On limite à N étapes pour éviter une boucle infinie.
+    # Boucle "Suivant" -> "Soumettre". On limite a N etapes pour eviter une boucle infinie.
     MAX_STEPS = 6
     for step in range(MAX_STEPS):
         session.check_stop()
@@ -208,7 +205,7 @@ def apply_to_job(
             session.human_pause()
             continue
 
-        # Ni Submit ni Next exploitable → questions custom non remplies.
+        # Ni Submit ni Next exploitable -> questions custom non remplies.
         screenshot = session.screenshot(f"skipped_{job.job_id}")
         return "skipped", f"Étape bloquée (questions custom). Screenshot: {screenshot.name}"
 

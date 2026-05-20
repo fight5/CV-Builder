@@ -169,7 +169,7 @@ def main() -> int:
                     letter_path="",
                     notes=notes,
                 )
-                event_logger("info", f"→ {status} ({notes})")
+                event_logger("info", f"Resultat: {status} ({notes})")
 
         _write_state({**_state_skeleton(args, counters), "status": "done"})
         event_logger("info", "Run terminé.")

@@ -17,7 +17,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
 
-# Bridge Streamlit Cloud secrets → environment variables so the orchestrator
+# Bridge Streamlit Cloud secrets -> environment variables so the orchestrator
 # (which uses os.getenv) works both locally (.env) and on cloud (st.secrets).
 try:
     for _k in ("GOOGLE_API_KEY", "GEMINI_API_KEY", "GEMINI_MODEL"):

@@ -1,7 +1,7 @@
 """Pipeline complet de génération d'une lettre de motivation LaTeX + PDF.
 
 Indépendant du pipeline CV :
-1. `letter_generator.generate_letter()`  → corps de lettre (texte via Gemini ou template fallback)
+1. `letter_generator.generate_letter()`  -> corps de lettre (texte via Gemini ou template fallback)
 2. Substitution dans `templates/letter.tex`
 3. Compilation via pdflatex (warm-up MiKTeX inclus)
 
@@ -200,7 +200,7 @@ def build_filename(ctx: LetterPDFContext) -> str:
 
 
 def generate_letter_pipeline(ctx: LetterPDFContext) -> dict:
-    """Pipeline complet : corps via Gemini → LaTeX → PDF. Retourne un dict de résultats."""
+    """Pipeline complet : corps via Gemini -> LaTeX -> PDF. Retourne un dict de resultats."""
     # 1. Corps de la lettre.
     if ctx.custom_body:
         body = ctx.custom_body.strip()

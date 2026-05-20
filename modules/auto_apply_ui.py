@@ -4,7 +4,7 @@ Affichée à la place de la page CV quand l'utilisateur choisit le tab Auto Appl
 dans la nav du fichier principal `app/streamlit_app.py`.
 
 Responsabilités :
-- Connecter manuellement chaque plateforme (login headed → cookies sauvegardés).
+- Connecter manuellement chaque plateforme (login headed -> cookies sauvegardes).
 - Configurer une recherche (keywords / location / max / mode).
 - Lancer un subprocess `auto_apply_runner` qui pilote Playwright.
 - Streamer les logs JSONL en direct.
