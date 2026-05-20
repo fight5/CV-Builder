@@ -21,7 +21,10 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 # Bridge Streamlit Cloud secrets -> environment variables.
 try:
-    for _k in ("GOOGLE_API_KEY", "GEMINI_API_KEY", "GEMINI_MODEL"):
+    for _k in (
+        "GOOGLE_API_KEY", "GEMINI_API_KEY", "GEMINI_MODEL",
+        "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL", "LLM_PROVIDER",
+    ):
         if _k in st.secrets and not os.getenv(_k):
             os.environ[_k] = str(st.secrets[_k])
 except (FileNotFoundError, Exception):
@@ -62,11 +65,15 @@ def _render_cv_letter():
         unsafe_allow_html=True,
     )
 
-    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY", "")
-    if not api_key or api_key == "your_gemini_api_key_here":
+    ds_key = os.getenv("DEEPSEEK_API_KEY", "")
+    gm_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY", "")
+    has_ds = bool(ds_key) and ds_key != "your_deepseek_api_key_here"
+    has_gm = bool(gm_key) and gm_key != "your_gemini_api_key_here"
+    if not (has_ds or has_gm):
         st.markdown(
-            '<div class="error-box"><strong>Clé API Gemini manquante</strong> : '
-            'définissez <code>GOOGLE_API_KEY</code> dans <code>.env</code>.</div>',
+            '<div class="error-box"><strong>Aucune clé LLM configurée</strong> : '
+            'renseignez <code>DEEPSEEK_API_KEY</code> (priorité) ou '
+            '<code>GOOGLE_API_KEY</code> dans <code>.env</code>.</div>',
             unsafe_allow_html=True,
         )
         st.stop()

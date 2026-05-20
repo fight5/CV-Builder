@@ -218,7 +218,11 @@ Le CV produit utilise le template `templates/optimum.tex` (mise en page deux col
 ### Prérequis runtime supplémentaires
 
 - `pdflatex` accessible dans le `PATH` (TeX Live, MiKTeX, ou installé via `packages.txt` sur Streamlit Cloud).
-- `GOOGLE_API_KEY` (ou `GEMINI_API_KEY`) défini dans `.env` ou les secrets Streamlit.
+- **LLM** — au choix :
+  - `DEEPSEEK_API_KEY` (provider par défaut, modèle `deepseek-chat` via l'API OpenAI-compatible). Obtenez une clé sur [platform.deepseek.com](https://platform.deepseek.com).
+  - `GOOGLE_API_KEY` (ou `GEMINI_API_KEY`) — fallback automatique si DeepSeek est indisponible.
+- `LLM_PROVIDER` optionnel (`deepseek` | `gemini`) pour forcer un provider. Défaut : `deepseek` si la clé est présente, sinon `gemini`.
+- `DEEPSEEK_MODEL` optionnel (défaut : `deepseek-chat`) — autres choix : `deepseek-reasoner`.
 - `GEMINI_MODEL` optionnel (défaut : `gemini-2.5-flash`).
 
 ---

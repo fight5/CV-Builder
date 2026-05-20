@@ -79,19 +79,48 @@ def extract_cv_text(uploaded_file) -> str:
             pass
 
 
-# ── Gemini ───────────────────────────────────────────────────────────────────
-def _api_key() -> Optional[str]:
-    return os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+# ── LLM (DeepSeek prioritaire, Gemini en fallback) ───────────────────────────
+def _provider() -> str:
+    """Provider sélectionné via env. 'deepseek' par défaut si la clé est dispo."""
+    explicit = (os.getenv("LLM_PROVIDER") or "").strip().lower()
+    if explicit in {"deepseek", "gemini"}:
+        return explicit
+    if os.getenv("DEEPSEEK_API_KEY"):
+        return "deepseek"
+    return "gemini"
 
 
-def generate_with_gemini(prompt: str, temperature: float = 0.35) -> str:
-    """Appel direct Gemini. Retourne le texte brut. Lève RuntimeError si KO."""
-    api_key = _api_key()
+def _call_deepseek(prompt: str, temperature: float) -> str:
+    """Appel DeepSeek via l'API OpenAI-compatible."""
+    api_key = os.getenv("DEEPSEEK_API_KEY")
     if not api_key:
+        raise RuntimeError("DEEPSEEK_API_KEY manquante dans l'environnement.")
+    try:
+        from openai import OpenAI
+    except ImportError as e:
         raise RuntimeError(
-            "Clé API Gemini manquante. Définissez GOOGLE_API_KEY (ou GEMINI_API_KEY)."
-        )
-    model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+            "openai SDK requis pour DeepSeek. Installez : pip install openai"
+        ) from e
+
+    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+    model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=temperature,
+        max_tokens=8192,
+    )
+    text = (resp.choices[0].message.content or "").strip()
+    if not text:
+        raise RuntimeError("Réponse DeepSeek vide.")
+    return text
+
+
+def _call_gemini(prompt: str, temperature: float) -> str:
+    """Appel Gemini (fallback)."""
+    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GOOGLE_API_KEY (ou GEMINI_API_KEY) manquante.")
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_core.messages import HumanMessage
@@ -99,7 +128,7 @@ def generate_with_gemini(prompt: str, temperature: float = 0.35) -> str:
         raise RuntimeError(f"langchain-google-genai non installé : {e}") from e
 
     llm = ChatGoogleGenerativeAI(
-        model=model_name,
+        model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
         google_api_key=api_key,
         temperature=temperature,
         max_output_tokens=8192,
@@ -109,6 +138,23 @@ def generate_with_gemini(prompt: str, temperature: float = 0.35) -> str:
     if not text:
         raise RuntimeError("Réponse Gemini vide.")
     return text
+
+
+def generate_with_gemini(prompt: str, temperature: float = 0.35) -> str:
+    """Appel LLM. Nom historique conservé — route vers DeepSeek ou Gemini
+    selon LLM_PROVIDER (cf. _provider())."""
+    provider = _provider()
+    if provider == "deepseek":
+        try:
+            return _call_deepseek(prompt, temperature)
+        except Exception as e:
+            logger.warning("DeepSeek KO (%s) — fallback Gemini.", e)
+            return _call_gemini(prompt, temperature)
+    return _call_gemini(prompt, temperature)
+
+
+# Alias plus explicite pour le code appelant.
+generate_with_llm = generate_with_gemini
 
 
 # ── Prompts ──────────────────────────────────────────────────────────────────
