@@ -138,7 +138,7 @@ class ReportAgent(BaseAgent):
             exec_lines += [
                 "## Quality Control Warnings",
                 "",
-                *[f"- ⚠ {w}" for w in qc_warnings],
+                *[f"- {w}" for w in qc_warnings],
                 "",
             ]
 

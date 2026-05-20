@@ -30,7 +30,7 @@ def _build_skills_section(skills: list) -> str:
     if not skills:
         return ""
     items = [r"  \item " + latex_escape(s) for s in skills if s]
-    return "\\begin{itemize}[leftmargin=*, itemsep=1pt, topsep=2pt]\n" + "\n".join(items) + "\n\\end{itemize}"
+    return "\\begin{itemize}[leftmargin=1.1em, itemsep=0pt, topsep=0pt, parsep=0pt]\n" + "\n".join(items) + "\n\\end{itemize}"
 
 
 def _build_skills_grouped(skills: list) -> str:
@@ -90,7 +90,7 @@ def _build_certifications_section(certifications: list) -> str:
     if not certifications:
         return ""
     items = [r"  \item " + latex_escape(c) for c in certifications if c]
-    return "\\begin{itemize}[leftmargin=*, itemsep=1pt]\n" + "\n".join(items) + "\n\\end{itemize}"
+    return "\\begin{itemize}[leftmargin=1.1em, itemsep=0pt, topsep=0pt, parsep=0pt]\n" + "\n".join(items) + "\n\\end{itemize}"
 
 
 def _build_languages_section(languages: list) -> str:

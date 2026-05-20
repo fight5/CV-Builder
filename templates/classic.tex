@@ -1,11 +1,11 @@
 % Classic ATS-Friendly CV Template
 % Minimal, clean design. Maximum ATS parseability.
-\documentclass[11pt,a4paper]{article}
+\documentclass[10pt,a4paper]{article}
 
 % ── Packages ─────────────────────────────────────────────────────────────────
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage[margin=2cm, top=1.5cm, bottom=1.5cm]{geometry}
+\usepackage[margin=1.4cm, top=1.0cm, bottom=1.0cm]{geometry}
 \usepackage{xcolor}
 \usepackage{hyperref}
 \usepackage{enumitem}
@@ -31,13 +31,16 @@
 
 % ── Section Title Styling ─────────────────────────────────────────────────────
 \titleformat{\section}
-  {\large\bfseries\color{darkgray}}
+  {\normalsize\bfseries\color{darkgray}}
   {}
   {0em}
   {}
   [\color{maincolor}\titlerule]
 
-\titlespacing{\section}{0pt}{10pt}{5pt}
+\titlespacing*{\section}{0pt}{5pt}{3pt}
+
+\setlength{\parskip}{2pt}
+\setlist{nosep, leftmargin=1.1em}
 
 % ── Custom Commands ───────────────────────────────────────────────────────────
 \newcommand{\experienceentry}[5]{%
@@ -48,9 +51,9 @@
   \ifx\empty#4\else
     \noindent\textcolor{medgray}{\small\textit{#4}}
   \fi
-  \vspace{2pt}
+  \vspace{1pt}
   #5
-  \vspace{6pt}
+  \vspace{2pt}
 }
 
 \newcommand{\educationentry}[4]{%
@@ -61,12 +64,12 @@
   \ifx\empty#4\else
     \noindent\textcolor{medgray}{\small\textit{#4}}
   \fi
-  \vspace{4pt}
+  \vspace{1pt}
 }
 
 \newcommand{\projectentry}[2]{%
   \noindent\textbf{#1} --- #2
-  \vspace{3pt}
+  \vspace{1pt}
 }
 
 % ── Document ──────────────────────────────────────────────────────────────────
@@ -93,9 +96,9 @@
   \href{{{CANDIDATE_LINKEDIN_URL}}}{{{CANDIDATE_LINKEDIN}}}
 \fi
 
-\vspace{6pt}
+\vspace{3pt}
 \noindent\rule{\textwidth}{0.4pt}
-\vspace{2pt}
+\vspace{1pt}
 
 % ── Professional Summary ──────────────────────────────────────────────────────
 \ifx\empty{{CANDIDATE_SUMMARY}}\empty\else

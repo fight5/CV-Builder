@@ -23,6 +23,7 @@ Return ONLY a valid JSON object with the following keys:
 - company_values: list of strings (cultural or soft-skill requirements)
 - tech_stack: list of strings (specific technologies, frameworks, languages mentioned)
 - job_title: string (the main job title)
+- company_name: string (the hiring company name if mentioned, otherwise empty string)
 - industry: string (the industry sector)
 Do not include any explanation, only the JSON object."""
 
@@ -70,6 +71,7 @@ def _regex_fallback(text: str) -> dict:
         "company_values": [],
         "tech_stack": tech_found,
         "job_title": "",
+        "company_name": "",
         "industry": "",
     }
 
@@ -115,12 +117,12 @@ class JobParserAgent(BaseAgent):
         required_keys = [
             "required_skills", "nice_to_have_skills", "ats_keywords",
             "experience_level", "responsibilities", "company_values",
-            "tech_stack", "job_title", "industry",
+            "tech_stack", "job_title", "company_name", "industry",
         ]
         for key in required_keys:
             if key not in parsed:
                 parsed[key] = [] if key != "experience_level" else "mid"
-                if key not in ("job_title", "industry"):
+                if key not in ("job_title", "company_name", "industry"):
                     self._log(f"Missing key '{key}' in LLM output, defaulting", "warning")
 
         # Deduplicate lists

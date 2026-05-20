@@ -119,22 +119,13 @@ def render() -> None:
         unsafe_allow_html=True,
     )
 
-    with st.expander("⚠ Avertissement légal — à lire avant d'utiliser", expanded=False):
-        st.warning(
-            "Automatiser des candidatures viole les Conditions d'utilisation de la plupart "
-            "des plateformes (LinkedIn, Indeed, etc.) et peut entraîner le **bannissement "
-            "définitif** de ton compte. Utilise ces fonctionnalités à tes propres risques, "
-            "de préférence en mode semi-automatique (revue manuelle avant soumission) et "
-            "avec des volumes raisonnables. Ne soumets jamais d'informations inventées."
-        )
-
     # ── 1. Plateformes ──────────────────────────────────────────────────────
     st.subheader("1. Plateformes")
     plat_cols = st.columns(len(config.PLATFORMS))
     for col, (key, spec) in zip(plat_cols, config.PLATFORMS.items()):
         with col:
             cookies_path = config.COOKIES_DIR / f"{key}.json"
-            badge = "✓ Connecté" if cookies_path.exists() else "✗ Non connecté"
+            badge = "Connecté" if cookies_path.exists() else "Non connecté"
             badge_color = "#28a745" if cookies_path.exists() else "#888"
             st.markdown(
                 f"**{spec.label}**<br>"
@@ -209,7 +200,7 @@ def render() -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(cv_upload.getvalue())
             cv_path = str(target)
-            st.success(f"CV enregistré → {target.name}")
+            st.success(f"CV enregistré : {target.name}")
         else:
             # Fallback : dernier CV original déposé.
             existing = sorted(config.CVS_ORIGINAL_DIR.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -221,7 +212,7 @@ def render() -> None:
         company_hint = st.text_input("Entreprise (pour la lettre)", value="")
         job_title_hint = st.text_input("Intitulé du poste (pour la lettre)", value=keywords)
         jd_hint = st.text_area("Description de l'offre (collez ici)", height=120)
-        if st.button("✨ Générer la lettre de motivation"):
+        if st.button("Générer la lettre de motivation"):
             if not (jd_hint and cv_path):
                 st.error("Il faut un CV et une description d'offre pour générer la lettre.")
             else:
@@ -237,7 +228,7 @@ def render() -> None:
                     path = letter_generator.save_letter(text, company=company_hint, job_title=job_title_hint)
                     st.session_state.last_letter_text = text
                     st.session_state.last_letter_path = str(path)
-                    st.success(f"Lettre générée → {path.name}")
+                    st.success(f"Lettre générée : {path.name}")
 
         if st.session_state.last_letter_text:
             st.text_area(
@@ -247,7 +238,7 @@ def render() -> None:
                 height=180,
             )
             st.download_button(
-                "⬇ Télécharger la lettre (.txt)",
+                "Télécharger la lettre (.txt)",
                 data=st.session_state.last_letter_text.encode("utf-8"),
                 file_name=Path(st.session_state.last_letter_path).name if st.session_state.last_letter_path else "lettre.txt",
                 mime="text/plain",
@@ -260,7 +251,7 @@ def render() -> None:
 
     with a1:
         if st.button(
-            "🚀 Lancer les candidatures",
+            "Lancer les candidatures",
             type="primary",
             disabled=runner_alive,
             use_container_width=True,
@@ -286,12 +277,12 @@ def render() -> None:
                 st.success("Runner lancé — les logs s'affichent ci-dessous.")
 
     with a2:
-        if st.button("⏹ Arrêter", disabled=not runner_alive, use_container_width=True):
+        if st.button("Arrêter", disabled=not runner_alive, use_container_width=True):
             file_manager.request_stop()
             st.warning("Stop demandé — le runner s'arrête à la prochaine action.")
 
     with a3:
-        if st.button("📁 Ouvrir le dossier", use_container_width=True):
+        if st.button("Ouvrir le dossier", use_container_width=True):
             try:
                 file_manager.open_folder(config.JOB_AGENT_HOME)
             except Exception as e:
@@ -349,7 +340,7 @@ def render() -> None:
         cols = [c for c in ["date", "platform", "company", "job_title", "status", "url", "notes"] if c in df.columns]
         st.dataframe(df[cols].iloc[::-1], use_container_width=True, hide_index=True)
         st.download_button(
-            "⬇ Télécharger l'historique (CSV)",
+            "Télécharger l'historique (CSV)",
             data=config.APPLICATIONS_CSV.read_bytes(),
             file_name="applications.csv",
             mime="text/csv",

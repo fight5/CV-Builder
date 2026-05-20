@@ -34,7 +34,6 @@ logger = logging.getLogger(__name__)
 # ── Configuration de la page ──────────────────────────────────────────────────
 st.set_page_config(
     page_title="Générateur de CV ATS par IA",
-    page_icon="📄",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -140,6 +139,38 @@ def _run_pipeline(job_text: str, resume_text: str, preferences: dict, photo_path
         return None
 
 
+def _slug_for_filename(s: str, max_len: int = 30) -> str:
+    """Slugify simple sans accents pour un nom de fichier propre."""
+    import unicodedata
+    if not s:
+        return ""
+    nfkd = unicodedata.normalize("NFKD", s)
+    ascii_str = "".join(c for c in nfkd if not unicodedata.combining(c))
+    out = []
+    for ch in ascii_str:
+        if ch.isalnum():
+            out.append(ch)
+        elif ch in " -_'":
+            out.append("_")
+    s = "".join(out)
+    while "__" in s:
+        s = s.replace("__", "_")
+    return s.strip("_")[:max_len]
+
+
+def _build_cv_filename(result: dict) -> str:
+    """Construit `Nom_Poste_Entreprise_CV` à partir du résultat du pipeline."""
+    optimized = result.get("optimized_content") or {}
+    job_req = result.get("job_requirements") or {}
+    name = _slug_for_filename((optimized.get("personal_info") or {}).get("name", ""))
+    poste = _slug_for_filename(job_req.get("job_title", ""))
+    entreprise = _slug_for_filename(job_req.get("company_name", ""))
+    parts = [p for p in (name, poste, entreprise) if p]
+    if not parts:
+        return "CV"
+    return "_".join(parts) + "_CV"
+
+
 # ── Page 1 : Génération CV ───────────────────────────────────────────────────
 def _render_cv_generator():
     st.markdown('<div class="main-title">Générateur de CV ATS par IA</div>', unsafe_allow_html=True)
@@ -151,7 +182,7 @@ def _render_cv_generator():
 
     if not api_key_valid:
         st.markdown(
-            '<div class="error-box">⚠ <strong>Clé API Gemini manquante</strong> : '
+            '<div class="error-box"><strong>Clé API Gemini manquante</strong> : '
             'renseignez <code>GOOGLE_API_KEY</code> dans le fichier <code>.env</code> '
             'à la racine du projet, puis relancez l\'application.</div>',
             unsafe_allow_html=True,
@@ -290,7 +321,7 @@ def _render_cv_generator():
                 "include_photo": include_photo,
             }
 
-            with st.spinner("Exécution du pipeline à 8 agents... Cela peut prendre 30 à 90 secondes."):
+            with st.spinner("CV en train d'être généré..."):
                 result = _run_pipeline(job_text, resume_text, preferences, photo_path)
                 if result:
                     st.session_state.result = result
@@ -300,7 +331,6 @@ def _render_cv_generator():
     if result is None:
         st.markdown("""
 <div class="empty-state">
-  <div class="icon">📄</div>
   <div class="title">Votre CV optimisé apparaîtra ici</div>
   <div class="hint">Complétez les étapes ci-dessus puis cliquez sur <strong>Générer le CV ATS</strong>.</div>
 </div>
@@ -316,6 +346,8 @@ def _render_cv_generator():
     pdf_path = result.get("pdf_path")
     report_md = result.get("executive_report", "")
 
+    base_name = _build_cv_filename(result)
+
     # ── Téléchargements (action principale, en haut) ─────────────────────────
     st.subheader("Votre CV optimisé est prêt")
     col_dl1, col_dl2, col_dl3 = st.columns(3)
@@ -324,22 +356,22 @@ def _render_cv_generator():
         if pdf_path and Path(pdf_path).exists():
             with open(pdf_path, "rb") as f:
                 st.download_button(
-                    label="⬇ Télécharger le PDF",
+                    label="Télécharger le PDF",
                     data=f.read(),
-                    file_name="cv_optimise.pdf",
+                    file_name=f"{base_name}.pdf",
                     mime="application/pdf",
                     use_container_width=True,
                     type="primary",
                 )
         else:
-            st.button("⬇ Télécharger le PDF", disabled=True, use_container_width=True, help="pdflatex non disponible")
+            st.button("Télécharger le PDF", disabled=True, use_container_width=True, help="pdflatex non disponible")
 
     with col_dl2:
         if latex_source:
             st.download_button(
-                label="⬇ Télécharger le .tex",
+                label="Télécharger le .tex",
                 data=latex_source.encode("utf-8"),
-                file_name="cv_optimise.tex",
+                file_name=f"{base_name}.tex",
                 mime="text/x-tex",
                 use_container_width=True,
             )
@@ -347,9 +379,9 @@ def _render_cv_generator():
     with col_dl3:
         if report_md:
             st.download_button(
-                label="⬇ Télécharger le rapport",
+                label="Télécharger le rapport",
                 data=report_md.encode("utf-8"),
-                file_name="rapport_correspondance.md",
+                file_name=f"{base_name}_rapport.md",
                 mime="text/markdown",
                 use_container_width=True,
             )
@@ -480,7 +512,7 @@ def main():
     nav_cols = st.columns([1, 1, 6])
     with nav_cols[0]:
         if st.button(
-            "📄 Génération CV",
+            "Génération CV",
             type="primary" if st.session_state.page == "cv" else "secondary",
             use_container_width=True,
         ):
@@ -488,7 +520,7 @@ def main():
             st.rerun()
     with nav_cols[1]:
         if st.button(
-            "🚀 Auto Apply",
+            "Auto Apply",
             type="primary" if st.session_state.page == "auto" else "secondary",
             use_container_width=True,
         ):

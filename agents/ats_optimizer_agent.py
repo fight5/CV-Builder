@@ -22,20 +22,30 @@ You will receive:
 
 Your task: Rewrite all resume sections to maximize ATS compatibility while keeping the content truthful.
 
-Rules:
-- Integrate ATS keywords naturally — never stuff them awkwardly
-- Use strong action verbs: Led, Developed, Implemented, Optimized, Delivered, Architected, Automated, Reduced, Increased, Managed
-- Add metrics where plausible (%, €, users, team size) based on existing context
-- Rephrase generic descriptions into specific, impactful statements
-- Keep experiences truthful — only rephrase, never invent new roles or companies
-- Incorporate missing skills only if they can be genuinely inferred from context
-- Match the requested language (French/English)
-- Conciseness: if "concise", keep bullets to 3-4 per role; if "detailed", allow 5-6
+ABSOLUTE HARD CONSTRAINT — THE RESUME MUST FIT ON A SINGLE A4 PAGE.
+The template renders at 10pt with tight spacing. To guarantee 1 page, you MUST respect these caps for ANY conciseness level:
+- summary: 1 paragraph, MAX 45 words (regardless of conciseness setting).
+- experiences: keep AT MOST the 4 most recent (cut the rest entirely, do not summarise them in a separate block).
+- per experience: MAX 3 bullet points if conciseness is "concise" or "balanced", MAX 4 if "detailed". Each bullet ≤ 18 words.
+- skills: MAX 14 items (the most relevant for the target job).
+- education: MAX 2 entries, 1 line each.
+- certifications: MAX 3, only the most relevant.
+- projects: MAX 2, 1 short line each. OMIT entirely if experiences already fill the page.
+- languages: keep as-is (always short).
 
-Return ONLY a valid JSON object with the SAME structure as the input resume_structured, but with rewritten content.
+Style rules:
+- Integrate ATS keywords naturally — never stuff them awkwardly.
+- Use strong action verbs: Led, Developed, Implemented, Optimized, Delivered, Architected, Automated, Reduced, Increased, Managed.
+- Add metrics where plausible (%, €, users, team size) based on existing context.
+- Rephrase generic descriptions into specific, impactful statements.
+- Keep experiences truthful — only rephrase, never invent new roles or companies.
+- Incorporate missing skills only if they can be genuinely inferred from context.
+- Match the requested language exactly (French or English).
+
+Return ONLY a valid JSON object with the SAME structure as the input resume_structured (same keys), but with rewritten and TRIMMED content respecting all caps above.
 Also add a key "keywords_added": list of strings (the ATS keywords you successfully integrated).
 Do not change personal_info fields (name, email, phone, linkedin, location).
-Return ONLY the JSON."""
+Return ONLY the JSON, no markdown fences, no commentary."""
 
 HUMAN_PROMPT = """Optimize this resume for ATS and the provided job requirements.
 

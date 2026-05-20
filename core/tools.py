@@ -97,7 +97,7 @@ def format_experience_latex(exp_dict: dict) -> str:
 
     lines = [
         r"\experienceentry{" + title + r"}{" + company + r"}{" + dates + r"}{" + location + r"}{",
-        r"  \begin{itemize}[leftmargin=*, topsep=2pt, itemsep=1pt]",
+        r"  \begin{itemize}[leftmargin=1.1em, topsep=0pt, itemsep=0pt, parsep=0pt]",
     ]
 
     if description and description.strip():

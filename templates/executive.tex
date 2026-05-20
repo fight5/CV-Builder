@@ -1,11 +1,11 @@
 % Executive ATS-Friendly CV Template
 % Conservative, formal design suitable for senior and executive positions
-\documentclass[11pt,a4paper]{article}
+\documentclass[10pt,a4paper]{article}
 
 % ── Packages ─────────────────────────────────────────────────────────────────
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage[margin=2cm, top=1.8cm, bottom=1.8cm]{geometry}
+\usepackage[margin=1.4cm, top=1.0cm, bottom=1.0cm]{geometry}
 \usepackage{xcolor}
 \usepackage{hyperref}
 \usepackage{enumitem}
@@ -40,32 +40,35 @@
   {}
   [\color{rulegray}\titlerule]
 
-\titlespacing{\section}{0pt}{12pt}{6pt}
+\titlespacing*{\section}{0pt}{6pt}{3pt}
+
+\setlength{\parskip}{2pt}
+\setlist{nosep, leftmargin=1.1em}
 
 % ── Custom Commands ───────────────────────────────────────────────────────────
 \newcommand{\experienceentry}[5]{%
   \noindent
   \begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}
-    \textbf{#2} & \textit{\textcolor{medgray}{#3}} \\
-    \textit{\textcolor{maincolor}{#1}} & \textcolor{medgray}{\small #4} \\
+    \textbf{#2} & \textit{\textcolor{medgray}{\small #3}} \\
+    \textit{\textcolor{maincolor}{\small #1}} & \textcolor{medgray}{\small #4} \\
   \end{tabular*}
-  \vspace{2pt}
+  \vspace{1pt}
   #5
-  \vspace{8pt}
+  \vspace{2pt}
 }
 
 \newcommand{\educationentry}[4]{%
   \noindent
   \begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}
-    \textbf{#2} & \textit{\textcolor{medgray}{#3}} \\
-    \textit{#1} & \textcolor{medgray}{\small #4} \\
+    \textbf{#2} & \textit{\textcolor{medgray}{\small #3}} \\
+    \textit{\small #1} & \textcolor{medgray}{\small #4} \\
   \end{tabular*}
-  \vspace{4pt}
+  \vspace{1pt}
 }
 
 \newcommand{\projectentry}[2]{%
   \noindent\textbf{#1:} #2
-  \vspace{4pt}
+  \vspace{1pt}
 }
 
 % ── Document ──────────────────────────────────────────────────────────────────
@@ -75,9 +78,9 @@
 
 % ── Header ───────────────────────────────────────────────────────────────────
 \begin{center}
-  {\Huge\bfseries\color{darkgray} {{CANDIDATE_NAME}}}\\[4pt]
-  {\large\textit{\color{maincolor} {{CANDIDATE_TITLE}}}}\\[6pt]
-  \color{medgray}\small
+  {\LARGE\bfseries\color{darkgray} {{CANDIDATE_NAME}}}\\[2pt]
+  {\small\textit{\color{maincolor} {{CANDIDATE_TITLE}}}}\\[3pt]
+  \color{medgray}\scriptsize
   \href{mailto:{{CANDIDATE_EMAIL}}}{{{CANDIDATE_EMAIL}}}
   \enspace\textbullet\enspace
   {{CANDIDATE_PHONE}}
@@ -96,8 +99,8 @@
   \end{flushright}
 \fi
 
-\noindent\color{darkgray}\rule{\textwidth}{0.8pt}
-\vspace{2pt}
+\noindent\color{darkgray}\rule{\textwidth}{0.6pt}
+\vspace{1pt}
 
 % ── Professional Summary ──────────────────────────────────────────────────────
 \ifx\empty{{CANDIDATE_SUMMARY}}\empty\else

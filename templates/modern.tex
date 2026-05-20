@@ -1,11 +1,11 @@
-% Modern ATS-Friendly CV Template
-% Designed for ATS compatibility: no tables, no columns for main content, clean structure
-\documentclass[11pt,a4paper]{article}
+% Modern ATS-Friendly CV Template — densité 1 page
+% Compacté pour tenir sur 1 page A4 : 10pt, marges 1.2cm, espacement réduit.
+\documentclass[10pt,a4paper]{article}
 
 % ── Packages ────────────────────────────────────────────────────────────────
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage[margin=1.8cm, top=1.5cm, bottom=1.5cm]{geometry}
+\usepackage[margin=1.2cm, top=1.0cm, bottom=1.0cm]{geometry}
 \usepackage{xcolor}
 \usepackage{hyperref}
 \usepackage{enumitem}
@@ -19,7 +19,6 @@
 \usepackage{parskip}
 
 % ── Color Definition ─────────────────────────────────────────────────────────
-% This line is replaced by LaTeXTemplateAgent with the user's chosen color
 \definecolor{maincolor}{RGB}{46,134,171}
 \definecolor{lightgray}{RGB}{245,245,245}
 \definecolor{darkgray}{RGB}{80,80,80}
@@ -33,44 +32,45 @@
   pdfborder={0 0 0},
 }
 
-% ── Section Title Styling ─────────────────────────────────────────────────────
+% ── Section Title Styling (compact) ──────────────────────────────────────────
 \titleformat{\section}
-  {\large\bfseries\color{maincolor}}
+  {\normalsize\bfseries\color{maincolor}}
   {}
   {0em}
   {}
   [\color{maincolor}\titlerule]
 
-\titlespacing{\section}{0pt}{10pt}{6pt}
+\titlespacing*{\section}{0pt}{6pt}{3pt}
+
+% Espacement global minimal
+\setlength{\parskip}{2pt}
+\setlength{\parsep}{0pt}
+\setlist{nosep, leftmargin=1.1em}
 
 % ── Custom Commands ───────────────────────────────────────────────────────────
-
-% Experience entry: {title}{company}{dates}{location}{content}
 \newcommand{\experienceentry}[5]{%
   \noindent
   \begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}
-    \textbf{\large #1} & \textcolor{medgray}{#3} \\
-    \textcolor{maincolor}{\textbf{#2}} & \textcolor{medgray}{\small #4} \\
+    \textbf{#1} & \textcolor{medgray}{\small #3} \\
+    \textcolor{maincolor}{\textbf{\small #2}} & \textcolor{medgray}{\small #4} \\
   \end{tabular*}
-  \vspace{2pt}
+  \vspace{1pt}
   #5
-  \vspace{6pt}
+  \vspace{2pt}
 }
 
-% Education entry: {degree}{institution}{dates}{location}
 \newcommand{\educationentry}[4]{%
   \noindent
   \begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}
-    \textbf{#1} & \textcolor{medgray}{#3} \\
-    \textcolor{maincolor}{#2} & \textcolor{medgray}{\small #4} \\
+    \textbf{#1} & \textcolor{medgray}{\small #3} \\
+    \textcolor{maincolor}{\small #2} & \textcolor{medgray}{\small #4} \\
   \end{tabular*}
-  \vspace{4pt}
+  \vspace{1pt}
 }
 
-% Project entry: {name}{description}
 \newcommand{\projectentry}[2]{%
   \noindent\textbf{\textcolor{maincolor}{#1}} --- #2
-  \vspace{4pt}
+  \vspace{1pt}
 }
 
 % ── Document ──────────────────────────────────────────────────────────────────
@@ -78,21 +78,21 @@
 
 \pagestyle{empty}
 
-% ── Header ───────────────────────────────────────────────────────────────────
+% ── Header compact ───────────────────────────────────────────────────────────
 \begin{minipage}[t]{0.72\textwidth}
   \vspace{0pt}
-  {\Huge\bfseries\color{maincolor} {{CANDIDATE_NAME}}}\\[4pt]
-  {\large\color{darkgray} {{CANDIDATE_TITLE}}}\\[8pt]
+  {\LARGE\bfseries\color{maincolor} {{CANDIDATE_NAME}}}\\[2pt]
+  {\small\color{darkgray} {{CANDIDATE_TITLE}}}\\[4pt]
   \textcolor{medgray}{
-    \small
+    \scriptsize
     \faEnvelope\ \href{mailto:{{CANDIDATE_EMAIL}}}{{{CANDIDATE_EMAIL}}}
     \quad
     \faPhone\ {{CANDIDATE_PHONE}}
     \quad
     \faMapMarker*\ {{CANDIDATE_LOCATION}}
-  }\\[2pt]
+  }\\[1pt]
   \textcolor{medgray}{
-    \small
+    \scriptsize
     \ifx\empty{{CANDIDATE_LINKEDIN}}\empty\else
       \faLinkedin\ \href{{{CANDIDATE_LINKEDIN_URL}}}{{{CANDIDATE_LINKEDIN}}}
     \fi
@@ -105,14 +105,13 @@
   {{PHOTO_BLOCK}}
 \end{minipage}
 
-\vspace{8pt}
-\noindent\color{maincolor}\rule{\textwidth}{1.5pt}
-\vspace{4pt}
+\vspace{3pt}
+\noindent\color{maincolor}\rule{\textwidth}{1pt}
 
 % ── Professional Summary ──────────────────────────────────────────────────────
 \ifx\empty{{CANDIDATE_SUMMARY}}\empty\else
 \section{Professional Summary}
-\noindent {{CANDIDATE_SUMMARY}}
+\noindent\small {{CANDIDATE_SUMMARY}}
 \fi
 
 % ── Experience ────────────────────────────────────────────────────────────────
@@ -121,7 +120,7 @@
 
 % ── Skills ───────────────────────────────────────────────────────────────────
 \section{Technical Skills}
-\noindent {{SKILLS_SECTION}}
+\noindent\small {{SKILLS_SECTION}}
 
 % ── Education ────────────────────────────────────────────────────────────────
 \section{Education}
@@ -136,13 +135,13 @@
 % ── Certifications ───────────────────────────────────────────────────────────
 \ifx\empty{{CERTIFICATIONS_SECTION}}\empty\else
 \section{Certifications}
-{{CERTIFICATIONS_SECTION}}
+\small {{CERTIFICATIONS_SECTION}}
 \fi
 
 % ── Languages ────────────────────────────────────────────────────────────────
 \ifx\empty{{LANGUAGES_SECTION}}\empty\else
 \section{Languages}
-\noindent {{LANGUAGES_SECTION}}
+\noindent\small {{LANGUAGES_SECTION}}
 \fi
 
 \end{document}
