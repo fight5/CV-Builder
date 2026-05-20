@@ -399,14 +399,25 @@ def _compile_latex(latex_src: str, base_name: str) -> tuple[Optional[bytes], lis
     for run in (1, 2):
         try:
             res = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=300, cwd=str(OUTPUT_DIR)
+                cmd,
+                capture_output=True,
+                timeout=300,
+                cwd=str(OUTPUT_DIR),
             )
         except subprocess.TimeoutExpired:
             return None, ["pdflatex timeout (300s)"]
         except Exception as e:
             return None, [f"pdflatex erreur : {e}"]
+        # Décodage tolérant : pdflatex peut émettre en cp1252/latin-1 sur Windows.
+        raw = res.stdout or b""
+        if isinstance(raw, bytes):
+            stdout = raw.decode("utf-8", errors="replace")
+            if "�" in stdout:
+                stdout = raw.decode("cp1252", errors="replace")
+        else:
+            stdout = raw
         if res.returncode != 0 and run == 2 and not pdf_path.exists():
-            tail = "\n".join((res.stdout or "").splitlines()[-30:])
+            tail = "\n".join(stdout.splitlines()[-30:])
             errors.append(f"pdflatex exit={res.returncode}.\n{tail}")
             return None, errors
 
