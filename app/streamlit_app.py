@@ -26,6 +26,7 @@ except (FileNotFoundError, Exception):
     pass  # No secrets.toml — running locally with .env
 
 from core.tools import extract_text_from_pdf, extract_text_from_docx
+from modules import auto_apply_ui
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -139,8 +140,8 @@ def _run_pipeline(job_text: str, resume_text: str, preferences: dict, photo_path
         return None
 
 
-# ── Application principale ────────────────────────────────────────────────────
-def main():
+# ── Page 1 : Génération CV ───────────────────────────────────────────────────
+def _render_cv_generator():
     st.markdown('<div class="main-title">Générateur de CV ATS par IA</div>', unsafe_allow_html=True)
     st.markdown('<div class="subtitle">Générez un CV optimisé ATS au format LaTeX, adapté à toute offre d\'emploi — propulsé par Gemini.</div>', unsafe_allow_html=True)
 
@@ -468,6 +469,38 @@ def main():
             st.markdown(diff)
         else:
             st.info("Aucun rapport de modifications généré.")
+
+
+# ── Routeur principal ────────────────────────────────────────────────────────
+def main():
+    # Navigation simple en haut de page (préserve session_state entre les pages).
+    if "page" not in st.session_state:
+        st.session_state.page = "cv"
+
+    nav_cols = st.columns([1, 1, 6])
+    with nav_cols[0]:
+        if st.button(
+            "📄 Génération CV",
+            type="primary" if st.session_state.page == "cv" else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state.page = "cv"
+            st.rerun()
+    with nav_cols[1]:
+        if st.button(
+            "🚀 Auto Apply",
+            type="primary" if st.session_state.page == "auto" else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state.page = "auto"
+            st.rerun()
+
+    st.markdown("---")
+
+    if st.session_state.page == "auto":
+        auto_apply_ui.render()
+    else:
+        _render_cv_generator()
 
 
 if __name__ == "__main__":

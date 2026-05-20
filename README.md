@@ -36,6 +36,48 @@ Chaque agent hérite de `BaseAgent`, dispose de son propre logger, et intègre u
 
 ---
 
+## Module Auto Apply
+
+En complément du générateur de CV, un module **Auto Apply** ajoute :
+- la génération de **lettres de motivation** ciblées (via Gemini, avec fallback template),
+- la **gestion des connexions** aux plateformes d'emploi (cookies persistés par Playwright),
+- des **candidatures automatiques** (LinkedIn Easy Apply, JobTeaser — autres plateformes en scaffold),
+- un **tracker CSV** local avec dashboard (statut, taux de réussite, historique complet).
+
+L'isolation est totale : tout passe par un sous-processus Playwright, l'UI Streamlit ne fait que démarrer/arrêter/streamer les logs. Données stockées dans `~/JobAgentAI/`.
+
+> ⚠ **Avertissement** : automatiser des candidatures viole les CGU de LinkedIn, Indeed et la plupart des plateformes — risque de bannissement définitif du compte. À utiliser en mode semi-automatique de préférence et avec des volumes modérés.
+
+### Installation Playwright (en plus de `pip install`)
+
+```bash
+playwright install chromium
+```
+
+### Première connexion
+
+1. Ouvrir l'onglet **Auto Apply** dans Streamlit.
+2. Cliquer **Se connecter** à côté de la plateforme cible — une fenêtre Chromium s'ouvre.
+3. Se logger manuellement (le module détecte le login et sauvegarde la session).
+4. Revenir dans Streamlit, lancer une recherche.
+
+### Architecture du module
+
+```
+modules/
+├── config.py                Chemins, plateformes, paramètres LLM
+├── file_manager.py          Arborescence JobAgentAI/, I/O atomique, stop-flag
+├── applications_tracker.py  CSV append-safe + stats agrégées
+├── letter_generator.py      Lettre via Gemini (+ fallback template)
+├── browser_manager.py       Wrapper Playwright (cookies, screenshots, logs)
+├── linkedin_apply.py        Easy Apply LinkedIn
+├── jobteaser_apply.py       Candidature rapide JobTeaser
+├── auto_apply_runner.py     Subprocess CLI orchestrant search + apply
+└── auto_apply_ui.py         Page Streamlit
+```
+
+---
+
 ## Démarrage rapide
 
 ### Prérequis
