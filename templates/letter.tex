@@ -1,0 +1,72 @@
+% Lettre de motivation — format français formel.
+% Placeholders remplacés par modules/letter_pdf.py.
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage[margin=2.2cm, top=2cm, bottom=2cm]{geometry}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{parskip}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\definecolor{accent}{RGB}{46,134,171}
+
+\hypersetup{
+  colorlinks=true,
+  urlcolor=accent,
+  linkcolor=accent,
+  pdfborder={0 0 0},
+}
+
+\setlength{\parskip}{0.6em}
+\setlength{\parindent}{0pt}
+
+\begin{document}
+\pagestyle{empty}
+
+% ── Expéditeur (haut gauche) ────────────────────────────────────────────────
+\begin{minipage}[t]{0.55\textwidth}
+  \textbf{{{SENDER_NAME}}}\\
+  {{SENDER_ADDRESS_BLOCK}}\\
+  {{SENDER_EMAIL}}\\
+  {{SENDER_PHONE}}
+\end{minipage}%
+\hfill
+% ── Destinataire (haut droite) ──────────────────────────────────────────────
+\begin{minipage}[t]{0.40\textwidth}
+\raggedleft
+  \textbf{{{RECIPIENT_COMPANY}}}\\
+  {{RECIPIENT_ADDRESS_BLOCK}}
+\end{minipage}
+
+\vspace{2em}
+
+% ── Lieu, date ──────────────────────────────────────────────────────────────
+\hfill {{SENDER_CITY}}, le {{DATE}}.
+
+\vspace{1.5em}
+
+% ── Objet ───────────────────────────────────────────────────────────────────
+\textbf{Objet :} {{SUBJECT}}
+
+\vspace{1.5em}
+
+% ── Corps de la lettre ──────────────────────────────────────────────────────
+{{SALUTATION}},
+
+\vspace{0.4em}
+
+{{LETTER_BODY}}
+
+\vspace{0.6em}
+
+{{CLOSING}}
+
+\vspace{2em}
+
+\hfill {{SENDER_NAME}}
+
+\end{document}
