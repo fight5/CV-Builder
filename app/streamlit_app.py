@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 st.set_page_config(
-    page_title="CV Builder — Candidature & Optimum",
+    page_title="CV Builder",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -92,7 +92,7 @@ def _render_cv_letter():
             label_visibility="collapsed",
         )
         company = st.text_input(
-            "Entreprise (facultatif — auto-détecté sinon)",
+            "Entreprise (facultatif, auto-détectée sinon)",
             value="",
             placeholder="ex. VINCI Airports",
         )
@@ -182,7 +182,7 @@ def _render_cv_letter():
             aggressive=True,
             company=company.strip(),
         )
-        with st.spinner("Génération en cours — CV optimisé puis lettre de motivation…"):
+        with st.spinner("Génération en cours, CV optimisé puis lettre de motivation…"):
             try:
                 st.session_state.optimum_result = run_optimum_pipeline(
                     job_offer, cv_text, prefs
@@ -246,17 +246,13 @@ def _render_cv_letter():
                 st.warning(err)
 
     st.markdown("---")
-    tab_letter, tab_cv_tex, tab_letter_tex = st.tabs([
-        "Lettre — texte", "Source LaTeX (CV)", "Source LaTeX (Lettre)"
-    ])
-    with tab_letter:
-        st.text_area("Corps de la lettre",
-                     value=result.get("letter_body", ""),
-                     height=320, label_visibility="collapsed")
-    with tab_cv_tex:
-        st.code(result.get("cv_latex", ""), language="latex", line_numbers=True)
-    with tab_letter_tex:
-        st.code(result.get("letter_latex", ""), language="latex", line_numbers=True)
+    st.subheader("Lettre (texte)")
+    st.text_area(
+        "Corps de la lettre",
+        value=result.get("letter_body", ""),
+        height=320,
+        label_visibility="collapsed",
+    )
 
 
 # ── Routeur principal — 2 boutons ────────────────────────────────────────────

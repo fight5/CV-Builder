@@ -602,7 +602,7 @@ def _compile_latex(latex_src: str, base_name: str) -> tuple[Optional[bytes], lis
 
     errors: list[str] = []
     if shutil.which("pdflatex") is None:
-        return None, ["pdflatex introuvable — installez TeX Live ou MiKTeX."]
+        return None, ["pdflatex introuvable, installez TeX Live ou MiKTeX."]
 
     cmd = [
         "pdflatex",
