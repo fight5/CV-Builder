@@ -153,16 +153,28 @@ def render() -> None:
 
     cv_source_text = extracted_text or cv_text_paste
 
-    # ── 2. Poste ciblé ────────────────────────────────────────────────────────
-    st.subheader("2. Poste ciblé")
+    # ── 2. Poste & Recherche ──────────────────────────────────────────────────
+    st.subheader("2. Poste & Recherche")
     st.caption(
-        "Décrivez le type de poste visé : secteur, compétences clés, niveau, contrat…  \n"
-        "Ce texte sert de **contexte général** pour optimiser le CV sur chaque offre trouvée."
+        "Définissez le poste recherché : les mots-clés lancent la recherche sur la plateforme, "
+        "la description sert de **contexte** pour personnaliser le CV sur chaque offre trouvée."
     )
+
+    r1, r2, r3 = st.columns([3, 3, 1])
+    with r1:
+        keywords = st.text_input("Mots-clés de recherche", value="data scientist", key="auto_keywords",
+                                 placeholder="Ex : data scientist, AI engineer…")
+    with r2:
+        location = st.text_input("Localisation", value="Paris", key="auto_location",
+                                 placeholder="Ex : Paris, France, Remote…")
+    with r3:
+        max_apps = st.number_input("Nb max", min_value=1, max_value=50, value=5, key="auto_max_apps")
+
     job_target = st.text_area(
-        "job_target",
-        height=120,
+        "Description du poste ciblé",
+        height=130,
         placeholder=(
+            "Décrivez le type de poste visé : secteur, compétences clés, niveau d'expérience, contrat…\n"
             "Ex : Data Scientist senior, Python, scikit-learn, PyTorch, LLM, RAG, "
             "secteur finance / assurance, Paris, CDI, 5 ans d'expérience minimum…"
         ),
@@ -216,17 +228,22 @@ def render() -> None:
 
     st.markdown("---")
 
-    # ── 4. Recherche & préférences CV ─────────────────────────────────────────
-    st.subheader("4. Recherche")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        keywords = st.text_input("Mots-clés", value="data scientist", key="auto_keywords")
-    with c2:
-        location = st.text_input("Localisation", value="Paris", key="auto_location")
-    with c3:
-        max_apps = st.number_input(
-            "Nb max d'offres", min_value=1, max_value=50, value=5, key="auto_max_apps"
+    # ── 4. Options & Lancement ────────────────────────────────────────────────
+    st.subheader("4. Lancer")
+
+    col_mode, col_headless = st.columns([2, 1])
+    with col_mode:
+        mode = st.radio(
+            "Mode de candidature",
+            ["Automatique", "Semi-automatique"],
+            horizontal=True,
+            key="auto_mode",
+            help="Automatique : soumet sans confirmation. Semi-auto : s'arrête avant chaque envoi.",
         )
+    with col_headless:
+        headless = st.toggle("Navigateur invisible", value=False, key="auto_headless")
+
+    auto_submit = mode == "Automatique"
 
     # Préférences CV (compactes — appliquées à chaque CV généré par le runner)
     with st.expander("⚙️ Préférences CV (template, langue, couleurs)", expanded=False):
@@ -254,24 +271,7 @@ def render() -> None:
                 disabled=(template != "optimum"),
             )
 
-    mode = st.radio(
-        "Mode de candidature",
-        ["Automatique", "Semi-automatique"],
-        horizontal=True,
-        key="auto_mode",
-        help="Automatique : soumet sans confirmation. Semi-auto : s'arrête avant chaque envoi.",
-    )
-    auto_submit = mode == "Automatique"
-    headless = st.toggle(
-        "Navigateur invisible (headless)",
-        value=False,
-        key="auto_headless",
-    )
-
-    st.markdown("---")
-
-    # ── 5. Candidatures ───────────────────────────────────────────────────────
-    st.subheader("5. Candidatures")
+    st.markdown("")
 
     ready = bool(cv_source_text.strip() and job_target.strip())
     runner_alive = _proc_alive(st.session_state.runner_proc)
