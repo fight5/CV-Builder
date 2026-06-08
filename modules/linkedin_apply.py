@@ -41,6 +41,36 @@ class Job:
 
 
 # ── Recherche ────────────────────────────────────────────────────────────────
+def _dismiss_cookie_banner(session: BrowserSession) -> None:
+    """Ferme la bannière de consentement cookies LinkedIn si présente."""
+    for sel in (
+        "button[action-type='ACCEPT']",
+        "button[data-control-name='ga-cookie.consent.accept.v3']",
+        "button.artdeco-global-alert__dismiss",
+        "#artdeco-global-alert-container button",
+    ):
+        try:
+            btn = session.page.locator(sel).first
+            if btn.count() and btn.is_visible(timeout=1500):
+                btn.click()
+                session.log("info", "Bannière cookie fermée.")
+                import time; time.sleep(1.5)
+                return
+        except Exception:
+            continue
+
+
+def _detect_page_mode(session: BrowserSession) -> str:
+    """Retourne 'spa' (React logged-in) ou 'static' (public/bot) selon le DOM présent."""
+    # Mode SPA (connecté) : li avec data-occludable-job-id
+    if session.page.locator("li[data-occludable-job-id]").count() > 0:
+        return "spa"
+    # Mode statique (non connecté ou bot-detected) : div.base-card--link
+    if session.page.locator("div.base-card--link").count() > 0:
+        return "static"
+    return "unknown"
+
+
 def search_jobs(
     session: BrowserSession,
     *,
@@ -48,58 +78,62 @@ def search_jobs(
     location: str = "",
     max_results: int = 10,
 ) -> list[Job]:
-    """Récupère jusqu'à `max_results` offres Easy Apply correspondant aux critères."""
+    """Récupère jusqu'à `max_results` offres Easy Apply correspondant aux critères.
+
+    Gère deux modes de rendu LinkedIn :
+    - SPA (React, connecté)  : li[data-occludable-job-id]
+    - Static (bot-detected)  : div.base-card--link
+    """
     url = SEARCH_URL_TEMPLATE.format(
         keywords=urllib.parse.quote(keywords or ""),
         location=urllib.parse.quote(location or ""),
     )
     session.log("info", f"LinkedIn — recherche : {url}")
     session.page.goto(url, wait_until="domcontentloaded")
-    session.human_pause()
 
-    # Scroll progressif dans la liste de gauche pour charger les cards en lazy-load.
+    # Fermer bannière cookie si présente
+    _dismiss_cookie_banner(session)
+
+    # Attendre les cards (jusqu'à 12s)
+    import time
+    for sel in ("li[data-occludable-job-id]", "div.base-card--link"):
+        try:
+            session.page.wait_for_selector(sel, timeout=12000)
+            break
+        except Exception:
+            continue
+
+    session.human_pause()
+    page_mode = _detect_page_mode(session)
+    session.log("info", f"LinkedIn page mode : {page_mode}")
+
     jobs: dict[str, Job] = {}
     last_count = -1
     rounds = 0
+
     while len(jobs) < max_results and rounds < 8:
         session.check_stop()
         rounds += 1
-        # Itère les cards visibles.
-        cards = session.page.locator("li[data-occludable-job-id], div.job-card-container")
-        count = cards.count()
-        for i in range(count):
-            card = cards.nth(i)
-            try:
-                job_id = card.get_attribute("data-occludable-job-id") or ""
-                if not job_id:
-                    # Fallback : extraire de l'attribut data-job-id du parent.
-                    job_id = card.get_attribute("data-job-id") or ""
-                title_el = card.locator("a.job-card-list__title, a.job-card-container__link").first
-                comp_el = card.locator(
-                    "h4.job-card-container__company-name, span.job-card-container__primary-description"
-                ).first
-                title = clean_title(title_el.inner_text(timeout=2000)) if title_el.count() else ""
-                company = clean_title(comp_el.inner_text(timeout=2000)) if comp_el.count() else ""
-                href = title_el.get_attribute("href") if title_el.count() else None
-                if not href:
-                    continue
-                full_url = href if href.startswith("http") else f"https://www.linkedin.com{href}"
-                key = job_id or full_url
-                if key not in jobs:
-                    jobs[key] = Job(job_id=job_id or key, title=title, company=company, url=full_url)
-                    if len(jobs) >= max_results:
-                        break
-            except Exception as e:
-                session.log("debug", f"card parse error: {e}")
+
+        if page_mode == "spa":
+            jobs = _parse_cards_spa(session, jobs, max_results)
+        else:
+            jobs = _parse_cards_static(session, jobs, max_results)
 
         if len(jobs) == last_count:
-            break  # plus rien ne charge
+            break
         last_count = len(jobs)
-        # Scroll le panneau gauche pour charger la suite.
+
+        # Scroll pour charger davantage
         try:
-            scroller = session.page.locator("div.jobs-search-results-list").first
+            scroller = session.page.locator(
+                "div.jobs-search-results-list, .scaffold-layout__list-container, "
+                "ul.jobs-search__results-list"
+            ).first
             if scroller.count():
                 scroller.evaluate("el => el.scrollBy(0, 1200)")
+            else:
+                session.page.mouse.wheel(0, 1200)
         except Exception:
             session.page.mouse.wheel(0, 1200)
         session.human_pause()
@@ -107,6 +141,78 @@ def search_jobs(
     result = list(jobs.values())[:max_results]
     session.log("info", f"LinkedIn — {len(result)} offre(s) Easy Apply trouvée(s)")
     return result
+
+
+def _parse_cards_spa(
+    session: BrowserSession, jobs: dict, max_results: int
+) -> dict:
+    """Parse les cards en mode SPA (React, connecté)."""
+    cards = session.page.locator("li[data-occludable-job-id]")
+    for i in range(cards.count()):
+        if len(jobs) >= max_results:
+            break
+        card = cards.nth(i)
+        try:
+            job_id = card.get_attribute("data-occludable-job-id") or ""
+            title_el = card.locator(
+                "a.job-card-container__link, a.job-card-list__title--link, "
+                "a[class*='job-card'][href*='/jobs/view']"
+            ).first
+            comp_el = card.locator(
+                ".artdeco-entity-lockup__subtitle, "
+                "h4.job-card-container__company-name, "
+                "span.job-card-container__primary-description"
+            ).first
+            title = clean_title(title_el.inner_text(timeout=2000)) if title_el.count() else ""
+            company = clean_title(comp_el.inner_text(timeout=2000)) if comp_el.count() else ""
+            href = title_el.get_attribute("href") if title_el.count() else None
+            if not href:
+                link = card.locator("a[href*='/jobs/view']").first
+                href = link.get_attribute("href") if link.count() else None
+            if not href:
+                continue
+            full_url = href if href.startswith("http") else f"https://www.linkedin.com{href}"
+            key = job_id or full_url
+            if key not in jobs:
+                jobs[key] = Job(job_id=job_id or key, title=title, company=company, url=full_url)
+        except Exception as e:
+            session.log("debug", f"SPA card parse error: {e}")
+    return jobs
+
+
+def _parse_cards_static(
+    session: BrowserSession, jobs: dict, max_results: int
+) -> dict:
+    """Parse les cards en mode statique (LinkedIn public / bot-detected)."""
+    import re as _re
+    cards = session.page.locator("div.base-card--link")
+    for i in range(cards.count()):
+        if len(jobs) >= max_results:
+            break
+        card = cards.nth(i)
+        try:
+            title_el = card.locator(
+                "h3.base-search-card__title, h3[class*='title']"
+            ).first
+            comp_el = card.locator(
+                "h4.base-search-card__subtitle, a[class*='company'], "
+                ".base-search-card__subtitle"
+            ).first
+            link_el = card.locator("a[href*='/jobs/view']").first
+            title = clean_title(title_el.inner_text(timeout=2000)) if title_el.count() else ""
+            company = clean_title(comp_el.inner_text(timeout=2000)) if comp_el.count() else ""
+            href = link_el.get_attribute("href") if link_el.count() else None
+            if not href:
+                continue
+            full_url = href if href.startswith("http") else f"https://www.linkedin.com{href}"
+            # Extraire l'ID numérique de l'URL si disponible
+            m = _re.search(r"/jobs/view/(\d+)", full_url)
+            job_id = m.group(1) if m else full_url
+            if job_id not in jobs:
+                jobs[job_id] = Job(job_id=job_id, title=title, company=company, url=full_url)
+        except Exception as e:
+            session.log("debug", f"Static card parse error: {e}")
+    return jobs
 
 
 # ── Candidature ──────────────────────────────────────────────────────────────

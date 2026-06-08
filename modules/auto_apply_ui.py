@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 import time
+import webbrowser
 from pathlib import Path
 
 import pandas as pd
@@ -29,7 +30,6 @@ from .optimum_pipeline import extract_cv_text
 def _ss_init() -> None:
     ss = st.session_state
     ss.setdefault("runner_proc", None)
-    ss.setdefault("login_proc", None)
     ss.setdefault("auto_refresh", False)
 
 
@@ -37,30 +37,27 @@ def _proc_alive(p) -> bool:
     return p is not None and p.poll() is None
 
 
-# ── Sous-processus : login headed ────────────────────────────────────────────
-def _spawn_login(platform: str) -> subprocess.Popen:
-    file_manager.ensure_directories()
-    code = (
-        "import sys, os; "
-        f"sys.path.insert(0, r'{Path(__file__).resolve().parent.parent}'); "
-        "from modules.browser_manager import BrowserSession, JsonlEventLogger; "
-        "from modules.config import PLATFORMS; "
-        f"spec = PLATFORMS[{platform!r}]; "
-        "ready = None; "
-        f"plat = {platform!r}; "
-        "if plat == 'linkedin': "
-        "    from modules.linkedin_apply import READY_SELECTOR as R; ready = R\n"
-        "elif plat == 'jobteaser':\n"
-        "    from modules.jobteaser_apply import READY_SELECTOR as R; ready = R\n"
-        "logger = JsonlEventLogger();\n"
-        "with BrowserSession(plat, headless=False, event_logger=logger) as s:\n"
-        "    s.manual_login(spec.base_url, ready_selector=ready)\n"
-    )
-    return subprocess.Popen(
-        [sys.executable, "-c", code],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+# ── Login : ouvre Chrome + crée un marqueur de session ───────────────────────
+
+def _open_in_chrome(url: str) -> None:
+    """Ouvre l'URL dans le navigateur par défaut du système (Chrome/Edge/Firefox)."""
+    try:
+        webbrowser.open(url)
+    except Exception:
+        pass
+
+
+def _create_session_marker(platform: str) -> None:
+    """Crée un fichier storage_state Playwright vide = marqueur 'connexion confirmée'.
+
+    Le runner détecte un state vide et ouvre une fenêtre headed pour finaliser
+    la session si nécessaire (première utilisation uniquement).
+    """
+    path = config.COOKIES_DIR / f"{platform}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Format vide mais valide pour Playwright storage_state
+    if not path.exists():
+        path.write_text('{"cookies":[],"origins":[]}', encoding="utf-8")
 
 
 def _spawn_runner(
@@ -201,22 +198,32 @@ def render() -> None:
             if not spec.implemented:
                 st.button("À venir", key=f"btn_soon_{key}", disabled=True, use_container_width=True)
                 continue
-            login_disabled = (
-                _proc_alive(st.session_state.login_proc)
-                or _proc_alive(st.session_state.runner_proc)
-            )
+
             if st.button(
                 "Se connecter" if not connected else "Re-connecter",
                 key=f"btn_login_{key}",
-                disabled=login_disabled,
+                disabled=_proc_alive(st.session_state.runner_proc),
                 use_container_width=True,
             ):
-                st.session_state.login_proc = _spawn_login(key)
-                st.session_state.auto_refresh = True
+                _open_in_chrome(spec.base_url)
+                st.session_state[f"login_pending_{key}"] = True
+                st.rerun()
+
+            # Instruction + confirmation après clic "Se connecter"
+            if st.session_state.get(f"login_pending_{key}"):
                 st.info(
-                    f"Une fenêtre Chromium s'ouvre — connecte-toi à {spec.label}. "
-                    "La session sera sauvegardée automatiquement."
+                    f"🌐 **{spec.label}** s'ouvre dans votre Chrome habituel.\n\n"
+                    "Connectez-vous, puis revenez ici et cliquez **✅ Confirmer**."
                 )
+                if st.button("✅ Confirmer la connexion", key=f"btn_confirm_{key}",
+                             use_container_width=True):
+                    _create_session_marker(key)
+                    st.session_state[f"login_pending_{key}"] = False
+                    st.success(
+                        f"Session {spec.label} enregistrée. "
+                        "Au premier lancement, une fenêtre Chrome s'ouvrira pour finaliser si nécessaire."
+                    )
+                    st.rerun()
 
     impl_keys = [k for k, s in config.PLATFORMS.items() if s.implemented]
     selected_platform = st.selectbox(
@@ -359,8 +366,8 @@ def render() -> None:
     else:
         st.caption("Aucun log pour le moment.")
 
-    # Auto-rerun toutes les 2 s tant qu'un subprocess tourne.
-    if _proc_alive(st.session_state.runner_proc) or _proc_alive(st.session_state.login_proc):
+    # Auto-rerun toutes les 2 s tant que le runner tourne.
+    if _proc_alive(st.session_state.runner_proc):
         time.sleep(2)
         st.rerun()
     else:

@@ -31,6 +31,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import json as _json
+
 from modules import applications_tracker, browser_manager, config, file_manager
 from modules.browser_manager import BrowserSession, JsonlEventLogger, StopRequested
 from modules.optimum_pipeline import CVPreferences, run_optimum_pipeline
@@ -123,16 +125,45 @@ def main() -> int:
             headless=args.headless,
             event_logger=event_logger,
         ) as session:
-            # Vérification login : si pas de cookies, on demande à l'utilisateur de
-            # se connecter via le bouton dédié (le runner refuse de continuer).
+            # Vérification login
             if not session.has_saved_session():
                 event_logger(
                     "error",
                     f"Aucune session sauvegardée pour {args.platform}. "
-                    f"Utilise d'abord le bouton 'Se connecter à {args.platform}' dans l'UI.",
+                    f"Clique 'Se connecter' dans l'UI, puis confirme.",
                 )
                 _write_state({"status": "error", "error": "no_saved_session"})
                 return 3
+
+            # Si la session est un marqueur vide (créé par le bouton Confirmer)
+            # → on ouvre LinkedIn en headed et on attend le login manuel.
+            cookies_path = config.COOKIES_DIR / f"{args.platform}.json"
+            session_empty = False
+            try:
+                state_data = _json.loads(cookies_path.read_text(encoding="utf-8"))
+                session_empty = not bool(state_data.get("cookies"))
+            except Exception:
+                pass
+
+            if session_empty and not args.headless:
+                event_logger("info", "Session vide détectée — connexion manuelle requise.")
+                event_logger("info", "Une fenêtre Chrome va s'ouvrir — connectez-vous à LinkedIn.")
+                spec = config.PLATFORMS[args.platform]
+                try:
+                    # Import du READY_SELECTOR spécifique à la plateforme
+                    ready_sel = None
+                    if args.platform == "linkedin":
+                        from modules.linkedin_apply import READY_SELECTOR
+                        ready_sel = READY_SELECTOR
+                    elif args.platform == "jobteaser":
+                        from modules.jobteaser_apply import READY_SELECTOR
+                        ready_sel = READY_SELECTOR
+                    session.manual_login(spec.base_url, ready_selector=ready_sel)
+                    event_logger("info", "Connexion réussie — session sauvegardée.")
+                except TimeoutError:
+                    event_logger("error", "Login timeout (4 min). Relancez après connexion.")
+                    _write_state({"status": "error", "error": "login_timeout"})
+                    return 3
 
             event_logger("info", f"Recherche : keywords='{args.keywords}', location='{args.location}'")
             _write_state({**_state_skeleton(args, counters), "status": "searching"})

@@ -1,14 +1,6 @@
 % Template "OPTIMUM" — design utilisateur, paramétrable.
-% Placeholders dynamiques injectés par modules/optimum_pipeline.py :
-%   {{ACCENT_RGB}}      ex. "0,102,153"
-%   {{LEFTBG_RGB}}      ex. "23,46,74"
-%   {{BABEL_LANG}}      "french" | "english"
-%   {{PHOTO_BLOCK}}     bloc \includegraphics ou vide si pas de photo
-%   {{FULL_NAME}}, {{HEADER_TITLE}}, {{EMAIL}}, {{LINKEDIN_URL}},
-%   {{LINKEDIN_HANDLE}}, {{PHONE}}, {{LOCATION}}, {{SUMMARY}}
-%   {{SKILLS_ITEMS}}, {{TOOLS_ITEMS}}, {{LANGUAGES_ITEMS}},
-%   {{CERTIFICATIONS_ITEMS}}, {{QUALITIES_ITEMS}}, {{INTERESTS_ITEMS}},
-%   {{AWARDS_ITEMS}}, {{EXPERIENCES_BLOCK}}, {{EDUCATION_BLOCK}}
+% Placeholders dynamiques injectés par modules/optimum_pipeline.py.
+% Ne pas mettre les noms de placeholders ici pour eviter les doubles remplacements.
 
 \documentclass[9.5pt,a4paper]{article}
 
@@ -86,6 +78,13 @@
 {{AWARDS_SECTION}}
 
 \vspace{0.15cm}
+
+% Logo LinkedIn (présent si Linkedinlogo.PNG existe dans templates/assets/)
+\begin{center}
+\safeimage{Linkedinlogo.PNG}{0.25\textwidth}
+\end{center}
+
+\vspace{0.2cm}
 
 \end{minipage}
 }

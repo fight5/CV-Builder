@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = PROJECT_ROOT / "templates"
+ASSETS_DIR = TEMPLATES_DIR / "assets"   # logos, photo, images utilisateur
 TEMPLATE_LETTER = TEMPLATES_DIR / "letter.tex"
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
 
@@ -324,15 +325,85 @@ def _paragraphs_to_latex(body: str) -> str:
     return r" \\[0.4em] ".join(cleaned)
 
 
+# ── Assets (logos, photo) ────────────────────────────────────────────────────
+
+def _copy_assets(output_dir: Path) -> None:
+    """Copie tous les fichiers image de templates/assets/ vers output_dir.
+
+    Appelé avant chaque compilation pdflatex pour que les \\includegraphics
+    et \\safeimage puissent trouver les fichiers.
+    """
+    if not ASSETS_DIR.exists():
+        return
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for f in ASSETS_DIR.iterdir():
+        if f.suffix.lower() in {".png", ".jpg", ".jpeg", ".eps", ".pdf"}:
+            dest = output_dir / f.name
+            try:
+                shutil.copyfile(f, dest)
+            except OSError as e:
+                logger.debug("Asset copy skipped (%s): %s", f.name, e)
+
+
+def _find_logo(name: str) -> Optional[str]:
+    """Cherche dans templates/assets/ un logo correspondant au nom donné.
+
+    Retourne le nom de fichier (pas le chemin complet) ou None.
+    Exemples : "Thales Alenia Space" → "Thales.png",
+               "Sanofi" → "Sanofi.png",
+               "EPF Montpellier" → "EPF.png".
+    """
+    if not ASSETS_DIR.exists() or not name:
+        return None
+    name_lower = name.lower()
+    best: Optional[str] = None
+    best_score = 0
+    for f in ASSETS_DIR.iterdir():
+        if f.suffix.lower() not in {".png", ".jpg", ".jpeg"}:
+            continue
+        stem = f.stem.lower()
+        # Score = longueur du stem si le stem apparaît dans le nom (ou vice versa)
+        if stem in name_lower or name_lower in stem:
+            score = len(stem)
+        elif any(part in name_lower for part in stem.split() if len(part) > 2):
+            score = max(len(p) for p in stem.split() if p in name_lower)
+        else:
+            continue
+        if score > best_score:
+            best = f.name
+            best_score = score
+    return best
+
+
 # ── Build photo block ────────────────────────────────────────────────────────
 def _photo_block(prefs: CVPreferences) -> str:
-    """Bloc minipage avec photo, ou minipage vide. Garde l'alignement du header."""
+    """Bloc minipage avec photo, ou minipage vide. Garde l'alignement du header.
+
+    Priorités :
+    1. Photo uploadée via l'UI (prefs.photo_path) si include_photo=True.
+    2. Auto-détection depuis templates/assets/ (photo_didentite.png ou photo.png/jpg).
+    3. Bloc vide (0pt width).
+    """
+    photo_src: Optional[str] = None
+
+    # Priorité 1 : photo explicitement fournie via UI
     if prefs.include_photo and prefs.photo_path:
-        # Copier la photo dans outputs/ pour qu'elle soit à côté du .tex
+        photo_src = prefs.photo_path
+
+    # Priorité 2 : auto-détection dans templates/assets/
+    if not photo_src:
+        for candidate_name in ("photo_didentite.png", "photo_didentite.PNG",
+                               "photo.png", "photo.jpg", "profile.png"):
+            candidate = ASSETS_DIR / candidate_name
+            if candidate.exists():
+                photo_src = str(candidate)
+                break
+
+    if photo_src:
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        dest = OUTPUT_DIR / "photo_didentite.png"
         try:
-            OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-            dest = OUTPUT_DIR / "photo_didentite.png"
-            shutil.copyfile(prefs.photo_path, dest)
+            shutil.copyfile(photo_src, dest)
             return (
                 "\\begin{minipage}[t]{0.23\\textwidth}\n"
                 "\\vspace{0pt}\n"
@@ -438,13 +509,20 @@ def _build_experiences_block(experiences: list[dict], is_optimum: bool) -> str:
     blocks = []
     for exp in experiences:
         title   = _latex_escape(exp.get("title", ""))
-        company = _latex_escape(exp.get("company", ""))
+        company_raw = exp.get("company", "")
+        company = _latex_escape(company_raw)
         dates   = _latex_escape(exp.get("dates", ""))
         bullets = exp.get("bullets", [])
         rows = "\n".join(f"\\item {_latex_escape(str(b))}" for b in bullets)
+
+        # Logo de l'entreprise (depuis templates/assets/, facultatif)
+        logo = _find_logo(company_raw)
+        logo_tex = f"\\safeimage{{{logo}}}{{0.20\\textwidth}}" if logo else ""
+
         if is_optimum:
             block = (
-                f"\\textbf{{{title} --- {company}}} \\hfill \\emph{{{dates}}}\\\\\n\n"
+                f"\\textbf{{{title} --- {company}}}\n\n"
+                f"\\emph{{{dates}}}\\hfill {logo_tex}\\\\\n\n"
                 f"\\begin{{itemize}}[label=\\textcolor{{accent}}{{$\\blacktriangleright$}}]\n"
                 f"{rows}\n"
                 f"\\end{{itemize}}\n\n"
@@ -465,10 +543,16 @@ def _build_education_block(education: list[dict]) -> str:
     lines = []
     for edu in education:
         degree = _latex_escape(edu.get("degree", ""))
-        school = _latex_escape(edu.get("school", ""))
+        school_raw = edu.get("school", "")
+        school = _latex_escape(school_raw)
         dates  = _latex_escape(edu.get("dates", ""))
+
+        # Logo de l'école (depuis templates/assets/, facultatif)
+        logo = _find_logo(school_raw)
+        logo_tex = f"\\safeimage{{{logo}}}{{0.10\\textwidth}}" if logo else ""
+
         lines.append(
-            f"\\textbf{{{degree} --- {school}}} \\hfill \\emph{{{dates}}}\\\\[2pt]"
+            f"\\textbf{{{degree} --- {school}}} \\hfill {logo_tex} \\emph{{{dates}}}\\\\[2pt]"
         )
     return ("\n".join(lines) + "\n\\vspace{0.2cm}") if lines else ""
 
@@ -754,6 +838,9 @@ def _compile_latex(latex_src: str, base_name: str) -> tuple[Optional[bytes], lis
     tex_path = OUTPUT_DIR / f"{safe}.tex"
     pdf_path = OUTPUT_DIR / f"{safe}.pdf"
     tex_path.write_text(latex_src, encoding="utf-8")
+
+    # Copier les assets (logos, photo) dans outputs/ pour que pdflatex les trouve
+    _copy_assets(OUTPUT_DIR)
 
     errors: list[str] = []
     if shutil.which("pdflatex") is None:
