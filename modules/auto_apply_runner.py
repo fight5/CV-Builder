@@ -33,6 +33,7 @@ if str(ROOT) not in sys.path:
 
 from modules import applications_tracker, browser_manager, config, file_manager
 from modules.browser_manager import BrowserSession, JsonlEventLogger, StopRequested
+from modules.optimum_pipeline import CVPreferences, run_optimum_pipeline
 
 
 PLATFORM_MODULES = {
@@ -51,8 +52,16 @@ def main() -> int:
     parser.add_argument("--keywords", required=True)
     parser.add_argument("--location", default="")
     parser.add_argument("--max-applications", type=int, default=5)
+    # CV génération par offre
+    parser.add_argument("--cv-source-file", default="", help="Chemin vers le fichier texte du CV de base.")
+    parser.add_argument("--job-target-file", default="", help="Chemin vers le fichier texte du poste ciblé.")
+    parser.add_argument("--template", default="optimum", choices=["optimum", "minimal"])
+    parser.add_argument("--language", default="Français")
+    parser.add_argument("--accent-hex", default="#006699")
+    parser.add_argument("--leftbg-hex", default="#172E4A")
+    # Compat legacy
     parser.add_argument("--cv-path", default="")
-    parser.add_argument("--letter-path", default="", help="Chemin local de la lettre PDF générée.")
+    parser.add_argument("--letter-path", default="")
     parser.add_argument("--letter-text", default="")
     parser.add_argument(
         "--auto-submit",
@@ -70,6 +79,23 @@ def main() -> int:
 
     event_logger = JsonlEventLogger()
     event_logger("info", f"Démarrage runner — plateforme={args.platform}, max={args.max_applications}")
+
+    # Lecture du CV source et du poste ciblé depuis les fichiers temp
+    cv_source_text = ""
+    job_target_text = ""
+    if args.cv_source_file and Path(args.cv_source_file).exists():
+        cv_source_text = Path(args.cv_source_file).read_text(encoding="utf-8")
+        event_logger("info", f"CV source chargé : {len(cv_source_text)} caractères")
+    if args.job_target_file and Path(args.job_target_file).exists():
+        job_target_text = Path(args.job_target_file).read_text(encoding="utf-8")
+
+    cv_prefs = CVPreferences(
+        template=args.template,
+        language=args.language,
+        accent_hex=args.accent_hex,
+        leftbg_hex=args.leftbg_hex,
+        aggressive=True,
+    )
 
     _write_state({
         "status": "starting",
@@ -138,12 +164,51 @@ def main() -> int:
                     continue
 
                 event_logger("info", f"[{idx}/{len(jobs)}] {job.title} @ {job.company}")
+
+                # ── Génération CV personnalisé pour cette offre ───────────────
+                cv_path_for_job = args.cv_path  # fallback legacy
+                letter_path_for_job = args.letter_path
+                letter_text_for_job = args.letter_text
+
+                if cv_source_text:
+                    try:
+                        event_logger("info", f"Génération CV pour : {job.title} @ {job.company}")
+                        # On combine l'offre (title+company+url) avec le job_target comme contexte
+                        job_description = (
+                            f"{job.title} chez {job.company}\n\n"
+                            f"Poste ciblé : {job_target_text}"
+                        )
+                        result = run_optimum_pipeline(job_description, cv_source_text, cv_prefs)
+                        cv_bytes = result.get("cv_pdf_bytes")
+                        lm_bytes = result.get("letter_pdf_bytes")
+                        cv_filename = result.get("cv_filename", f"{job.title}_CV.pdf")
+                        lm_filename = result.get("letter_filename", f"{job.title}_Lettre.pdf")
+
+                        config.CVS_GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+                        config.LETTERS_DIR.mkdir(parents=True, exist_ok=True)
+
+                        if cv_bytes:
+                            cv_dest = config.CVS_GENERATED_DIR / cv_filename
+                            cv_dest.write_bytes(cv_bytes)
+                            cv_path_for_job = str(cv_dest)
+                            event_logger("info", f"CV généré : {cv_filename}")
+                        if lm_bytes:
+                            lm_dest = config.LETTERS_DIR / lm_filename
+                            lm_dest.write_bytes(lm_bytes)
+                            letter_path_for_job = str(lm_dest)
+                            letter_text_for_job = result.get("letter_body", "")
+                        else:
+                            for err in result.get("cv_errors", []) + result.get("letter_errors", []):
+                                event_logger("warning", f"Pipeline : {err}")
+                    except Exception as gen_err:
+                        event_logger("warning", f"Génération CV échouée, utilisation du CV par défaut : {gen_err}")
+
                 try:
                     status, notes = platform_mod.apply_to_job(
                         session,
                         job,
-                        cv_path=args.cv_path,
-                        letter_text=args.letter_text,
+                        cv_path=cv_path_for_job,
+                        letter_text=letter_text_for_job,
                         auto_submit=args.auto_submit,
                     )
                 except StopRequested:
@@ -166,8 +231,8 @@ def main() -> int:
                     job_title=job.title,
                     url=job.url,
                     status=status,
-                    cv_path=args.cv_path,
-                    letter_path=args.letter_path,
+                    cv_path=cv_path_for_job,
+                    letter_path=letter_path_for_job,
                     notes=notes,
                 )
                 event_logger("info", f"Resultat: {status} ({notes})")
