@@ -52,6 +52,7 @@ def main() -> int:
     parser.add_argument("--location", default="")
     parser.add_argument("--max-applications", type=int, default=5)
     parser.add_argument("--cv-path", default="")
+    parser.add_argument("--letter-path", default="", help="Chemin local de la lettre PDF générée.")
     parser.add_argument("--letter-text", default="")
     parser.add_argument(
         "--auto-submit",
@@ -166,7 +167,7 @@ def main() -> int:
                     url=job.url,
                     status=status,
                     cv_path=args.cv_path,
-                    letter_path="",
+                    letter_path=args.letter_path,
                     notes=notes,
                 )
                 event_logger("info", f"Resultat: {status} ({notes})")

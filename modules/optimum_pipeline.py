@@ -18,6 +18,7 @@ letter_pdf_bytes, errors, et les noms de fichiers suggérés.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -168,91 +169,32 @@ def generate_with_llm(prompt: str, temperature: float = 0.35) -> str:
 generate_with_gemini = generate_with_llm
 
 
-# ── Prompts ──────────────────────────────────────────────────────────────────
-_PROMPT_CV_AGGRESSIVE = """\
-Tu es un expert en recrutement, ATS (Applicant Tracking Systems), et rédaction de CV haut de gamme.
+# ── Prompt JSON structuré ────────────────────────────────────────────────────
+# Le LLM ne renvoie QUE les données (JSON), jamais le LaTeX complet.
+# La structure du template est préservée à 100% — seul le contenu change.
+_PROMPT_STRUCTURED_JSON = """\
+Tu es expert en recrutement, ATS, et rédaction de CV haut de gamme.
 
-Ta mission : réécrire entièrement le CV du candidat pour qu'il corresponde parfaitement à l'offre d'emploi.
+Ta mission : extraire et adapter les informations du CV source pour qu'elles correspondent
+parfaitement à l'offre d'emploi, puis les retourner sous forme JSON.
 
-OBJECTIFS — mode "MAX ATS" :
-1. Maximiser la compatibilité ATS, viser 95 % de couverture des mots-clés de l'offre.
-2. Faire apparaître le candidat comme le profil idéal, "top 1 %".
-3. Reformuler chaque expérience pour mettre en avant les éléments pertinents pour l'offre.
-4. Quantifier autant que possible (chiffres, %, échelle).
-5. Utiliser des verbes d'action puissants.
-6. Style ATS-friendly (pas de tableaux complexes, pas de glyphes exotiques).
+RÈGLES STRICTES :
+1. Ne JAMAIS inventer une expérience, une entreprise, des dates ou un diplôme.
+2. Ne JAMAIS inventer une certification absente du CV source.
+3. Conserver les noms d'entreprises et d'écoles tels quels.
+4. header_title = intitulé EXACT du poste tel qu'écrit dans l'offre.
+5. skills / tools : inclure TOUTES les technologies / concepts de l'offre
+   même s'ils n'apparaissent pas dans le CV source (le candidat assume).
+6. Enrichir les bullets d'expérience avec les outils/résultats de l'offre
+   tout en restant cohérent avec la mission réelle.
+7. Quantifier le plus possible (%, volumes, échelle).
+8. summary : 3-5 lignes max, ancré sur le CV source, orienté offre.
+9. Si un champ liste est vide (ex. aucune certification), mettre [].
+10. IMPORTANT — retourner du texte BRUT dans les valeurs JSON.
+    Ne pas utiliser de caractères d'échappement LaTeX (pas de \\& \\% \\# \\_).
+    Le code Python se chargera de l'échappement LaTeX après parsing.
 
-RÈGLES DURES — à respecter ABSOLUMENT :
-- Ne JAMAIS inventer une expérience professionnelle (entreprise, intitulé, dates).
-- Ne JAMAIS modifier les dates ni ajouter/retirer un diplôme.
-- Ne JAMAIS inventer une certification (laisser vide si absente du CV source).
-- Conserver les noms d'entreprises et d'écoles tels quels.
-
-LIBERTÉ ASSUMÉE PAR LE CANDIDAT — autorisé :
-- Lister dans COMPÉTENCES / OUTILS toute techno/concept mentionné dans l'offre,
-  même s'il n'apparaît pas explicitement dans le CV source. Le candidat assume.
-- Enrichir les bullet points des expériences avec les outils/concepts de l'offre,
-  en gardant la mission générale plausible vis-à-vis du poste réel.
-- Réécrire le titre du header pour matcher exactement celui de l'offre.
-
-RÈGLE SECTIONS VIDES — TRÈS IMPORTANT :
-Si le CV source ne fournit AUCUNE donnée pour une section (ex. aucune certification),
-tu dois OMETTRE COMPLÈTEMENT la section : ne génère ni le titre, ni le bloc itemize.
-Concrètement, ne remplis pas le placeholder correspondant — laisse-le ABSENT du
-document final si tu n'as rien à mettre dedans. N'invente JAMAIS pour combler.
-
-FORMAT DE SORTIE :
-Tu produis le code LaTeX complet d'un CV en respectant EXACTEMENT le squelette ci-dessous.
-- Ne modifie ni le préambule, ni les couleurs, ni la mise en page.
-- Remplace chaque placeholder `{{...}}` par le contenu adapté.
-- Pour les "...SECTION" du template optimum (ex. `{{CERTIFICATIONS_SECTION}}`),
-  écris le titre + l'itemize complet, OU rien du tout si vide. Format attendu :
-
-{{color{{white}}\\sffamily\\bfseries TITRE_SECTION}}
-
-\\vspace{{0.2cm}}
-
-\\begin{{itemize}}[label=\\textcolor{{white}}{{$\\blacktriangleright$}}]
-\\item \\textcolor{{white}}{{contenu 1}}
-\\item \\textcolor{{white}}{{contenu 2}}
-\\end{{itemize}}
-
-\\vspace{{0.45cm}}
-
-- Pour les "...SECTION_FLAT" du template minimal (texte noir, pas blanc) :
-
-\\section*{{TITRE_SECTION}}
-\\begin{{itemize}}
-\\item contenu 1
-\\item contenu 2
-\\end{{itemize}}
-
-- `{{EXPERIENCES_BLOCK}}` : pour chaque expérience véridique, motif :
-
-\\textbf{{Intitulé — Entreprise}}
-
-\\emph{{Dates}}
-
-\\begin{{itemize}}[label=\\textcolor{{accent}}{{$\\blacktriangleright$}}]
-\\item Réalisation quantifiée 1.
-\\item Réalisation quantifiée 2.
-\\end{{itemize}}
-
-\\vspace{{0.1cm}}
-
-- `{{EDUCATION_BLOCK}}` : motif :
-
-\\textbf{{Diplôme — École}} \\hfill \\emph{{Dates}}
-
-\\vspace{{0.2cm}}
-
-- `{{EXPERIENCE_HEADING}}` et `{{EDUCATION_HEADING}}` : titres traduits selon langue
-  ({language_heading_experience} / {language_heading_education}).
-- `{{HEADER_TITLE}}` = intitulé EXACT de l'offre.
-- `{{SUMMARY}}` = paragraphe 3–5 lignes ancré sur le CV source et orienté offre.
-- Échappe `&`, `%`, `_`, `#` avec `\\`.
-- N'écris AUCUN commentaire, AUCUN texte hors LaTeX, AUCUN ```latex.
-- LANGUE de TOUT le contenu : {language_label}.
+LANGUE de tout le contenu : {language_label}
 
 OFFRE D'EMPLOI :
 {job_offer}
@@ -260,12 +202,40 @@ OFFRE D'EMPLOI :
 CV SOURCE :
 {source_cv}
 
-SQUELETTE LATEX (renvoie l'intégralité, placeholders remplis ou OMIS si vides) :
----
-{template}
----
+Retourne UNIQUEMENT le JSON suivant, complété. Aucun autre texte avant ou après.
 
-Retourne uniquement le code LaTeX final, prêt à compiler avec pdflatex.
+{{
+  "full_name": "",
+  "header_title": "",
+  "email": "",
+  "linkedin_url": "",
+  "linkedin_handle": "",
+  "phone": "",
+  "location": "",
+  "summary": "",
+  "skills": [],
+  "tools": [],
+  "languages": [],
+  "certifications": [],
+  "qualities": [],
+  "interests": [],
+  "awards": [],
+  "experiences": [
+    {{
+      "title": "",
+      "company": "",
+      "dates": "",
+      "bullets": ["Réalisation quantifiée 1.", "Réalisation 2."]
+    }}
+  ],
+  "education": [
+    {{
+      "degree": "",
+      "school": "",
+      "dates": ""
+    }}
+  ]
+}}
 """
 
 _PROMPT_LETTER = """\
@@ -432,6 +402,161 @@ def _inject_style(template: str, prefs: CVPreferences) -> str:
     return out
 
 
+# ── Constructeurs de blocs LaTeX ─────────────────────────────────────────────
+
+def _build_section_block_optimum(title: str, items: list[str]) -> str:
+    """Bloc colonne gauche (fond coloré, texte blanc)."""
+    if not items:
+        return ""
+    rows = "\n".join(
+        f"\\item \\textcolor{{white}}{{{_latex_escape(str(i))}}}" for i in items
+    )
+    return (
+        f"{{\\color{{white}}\\sffamily\\bfseries {title}}}\n\n"
+        f"\\vspace{{0.2cm}}\n\n"
+        f"\\begin{{itemize}}[label=\\textcolor{{white}}{{$\\blacktriangleright$}}]\n"
+        f"{rows}\n"
+        f"\\end{{itemize}}\n\n"
+        f"\\vspace{{0.45cm}}\n"
+    )
+
+
+def _build_section_block_minimal(title: str, items: list[str]) -> str:
+    """Bloc section flat (template minimal, texte noir)."""
+    if not items:
+        return ""
+    rows = "\n".join(f"\\item {_latex_escape(str(i))}" for i in items)
+    return (
+        f"\\section*{{{title}}}\n"
+        f"\\begin{{itemize}}\n"
+        f"{rows}\n"
+        f"\\end{{itemize}}\n"
+    )
+
+
+def _build_experiences_block(experiences: list[dict], is_optimum: bool) -> str:
+    blocks = []
+    for exp in experiences:
+        title   = _latex_escape(exp.get("title", ""))
+        company = _latex_escape(exp.get("company", ""))
+        dates   = _latex_escape(exp.get("dates", ""))
+        bullets = exp.get("bullets", [])
+        rows = "\n".join(f"\\item {_latex_escape(str(b))}" for b in bullets)
+        if is_optimum:
+            block = (
+                f"\\textbf{{{title} --- {company}}} \\hfill \\emph{{{dates}}}\\\\\n\n"
+                f"\\begin{{itemize}}[label=\\textcolor{{accent}}{{$\\blacktriangleright$}}]\n"
+                f"{rows}\n"
+                f"\\end{{itemize}}\n\n"
+                f"\\vspace{{0.1cm}}\n"
+            )
+        else:
+            block = (
+                f"\\textbf{{{title}, {company}}} \\hfill \\emph{{{dates}}}\n"
+                f"\\begin{{itemize}}\n"
+                f"{rows}\n"
+                f"\\end{{itemize}}\n\n"
+            )
+        blocks.append(block)
+    return "\n".join(blocks)
+
+
+def _build_education_block(education: list[dict]) -> str:
+    lines = []
+    for edu in education:
+        degree = _latex_escape(edu.get("degree", ""))
+        school = _latex_escape(edu.get("school", ""))
+        dates  = _latex_escape(edu.get("dates", ""))
+        lines.append(
+            f"\\textbf{{{degree} --- {school}}} \\hfill \\emph{{{dates}}}\\\\[2pt]"
+        )
+    return ("\n".join(lines) + "\n\\vspace{0.2cm}") if lines else ""
+
+
+def _build_latex_from_json(data: dict, template: str, prefs: CVPreferences) -> str:
+    """Injecte les données JSON dans le template — la structure LaTeX ne change jamais."""
+    is_optimum = "FLAT" not in template  # optimum a des sections colorées; minimal a des _FLAT
+    is_fr = not prefs.language.lower().startswith("en")
+
+    # ── Champs simples ───────────────────────────────────────────────────────
+    simple: dict[str, str] = {
+        "{{FULL_NAME}}":        _latex_escape(data.get("full_name", "")),
+        "{{HEADER_TITLE}}":     _latex_escape(data.get("header_title", "")),
+        "{{EMAIL}}":            _latex_escape(data.get("email", "")),
+        "{{LINKEDIN_URL}}":     data.get("linkedin_url", ""),
+        "{{LINKEDIN_HANDLE}}":  _latex_escape(data.get("linkedin_handle", "")),
+        "{{PHONE}}":            _latex_escape(data.get("phone", "")),
+        "{{LOCATION}}":         _latex_escape(data.get("location", "")),
+        "{{SUMMARY}}":          _latex_escape(data.get("summary", "")),
+    }
+    result = template
+    for k, v in simple.items():
+        result = result.replace(k, v)
+
+    # ── Labels de sections ───────────────────────────────────────────────────
+    labels = {
+        "skills":         "COMPÉTENCES"   if is_fr else "SKILLS",
+        "tools":          "OUTILS"        if is_fr else "TOOLS",
+        "languages":      "LANGUES"       if is_fr else "LANGUAGES",
+        "certifications": "CERTIFICATIONS",
+        "qualities":      "QUALITÉS"      if is_fr else "QUALITIES",
+        "interests":      "INTÉRÊTS"      if is_fr else "INTERESTS",
+        "awards":         "DISTINCTIONS"  if is_fr else "AWARDS",
+    }
+
+    # ── Sections colonne gauche (optimum) ────────────────────────────────────
+    if is_optimum:
+        for key, label in labels.items():
+            ph = f"{{{{{key.upper()}_SECTION}}}}"
+            items = data.get(key, [])
+            result = result.replace(ph, _build_section_block_optimum(label, items))
+    # ── Sections flat (minimal) ──────────────────────────────────────────────
+    else:
+        for key, label in labels.items():
+            ph = f"{{{{{key.upper()}_SECTION_FLAT}}}}"
+            items = data.get(key, [])
+            result = result.replace(ph, _build_section_block_minimal(label, items))
+
+    # ── Expériences & Formation ──────────────────────────────────────────────
+    result = result.replace(
+        "{{EXPERIENCES_BLOCK}}",
+        _build_experiences_block(data.get("experiences", []), is_optimum),
+    )
+    result = result.replace(
+        "{{EDUCATION_BLOCK}}",
+        _build_education_block(data.get("education", [])),
+    )
+    return result
+
+
+def _try_fix_json(raw: str) -> str:
+    """Corrections sur un JSON mal formé retourné par le LLM."""
+    # 1. Extraire l'objet JSON s'il y a du texte autour
+    m = re.search(r"\{.*\}", raw, re.DOTALL)
+    raw = m.group(0) if m else raw
+    # 2. Trailing commas
+    raw = re.sub(r",(\s*[}\]])", r"\1", raw)
+    # 3. Backslashes LaTeX invalides dans les strings JSON.
+    #    JSON n'autorise que \" \\ \/ \b \f \n \r \t \uXXXX.
+    #    On double-échappe tous les \ non-standards.
+    _VALID = set('"\\bfnrtu/')
+    out = []
+    i = 0
+    while i < len(raw):
+        ch = raw[i]
+        if ch == '\\' and i + 1 < len(raw):
+            nxt = raw[i + 1]
+            if nxt not in _VALID:
+                out.append('\\\\')   # double-escaper pour rendre le JSON valide
+            else:
+                out.append('\\')
+            i += 1
+        else:
+            out.append(ch)
+        i += 1
+    return ''.join(out)
+
+
 # ── Génération CV ────────────────────────────────────────────────────────────
 def _strip_code_fences(text: str) -> str:
     text = text.strip()
@@ -481,27 +606,57 @@ def generate_optimized_cv(
     source_cv: str,
     prefs: Optional[CVPreferences] = None,
 ) -> str:
+    """Génère un CV LaTeX en préservant EXACTEMENT la structure du template.
+
+    Le LLM ne renvoie que les données (JSON).
+    On injecte nous-mêmes dans le template — structure toujours identique.
+    """
     prefs = prefs or CVPreferences()
+
+    # Charger le template + injecter style (couleurs, babel, photo)
     raw_template = _load_template(prefs.template)
     template = _inject_style(raw_template, prefs)
-    language_label = "Anglais" if prefs.language.lower().startswith("en") else "Français"
-    if prefs.language.lower().startswith("en"):
-        exp_h, edu_h = "Professional Experience", "Education"
-    else:
-        exp_h, edu_h = "Expériences professionnelles", "Formation"
-    prompt = _PROMPT_CV_AGGRESSIVE.format(
+
+    # Injecter les headings traduits
+    is_en = prefs.language.lower().startswith("en")
+    template = template.replace(
+        "{{EXPERIENCE_HEADING}}",
+        "Professional Experience" if is_en else "Expériences professionnelles",
+    )
+    template = template.replace(
+        "{{EDUCATION_HEADING}}",
+        "Education" if is_en else "Formation",
+    )
+
+    language_label = "Anglais" if is_en else "Français"
+
+    prompt = _PROMPT_STRUCTURED_JSON.format(
         language_label=language_label,
-        language_heading_experience=exp_h,
-        language_heading_education=edu_h,
         job_offer=(job_offer or "").strip()[:8000],
         source_cv=(source_cv or "").strip()[:8000],
-        template=template,
     )
-    raw = generate_with_llm(prompt, temperature=0.35)
-    latex = _strip_code_fences(raw)
+
+    raw = generate_with_llm(prompt, temperature=0.3)
+    raw = _strip_code_fences(raw)
+
+    # Parser le JSON
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        raw_fixed = _try_fix_json(raw)
+        try:
+            data = json.loads(raw_fixed)
+        except Exception as e:
+            raise RuntimeError(
+                f"Le LLM n'a pas retourné un JSON valide : {e}\n---\n{raw[:800]}"
+            )
+
+    # Construire le LaTeX en injectant les données dans le template fixe
+    latex = _build_latex_from_json(data, template, prefs)
+
     if r"\documentclass" not in latex:
-        raise RuntimeError("Le LLM n'a pas renvoyé un document LaTeX complet.")
-    latex = _strip_empty_sections(latex)
+        raise RuntimeError("Injection échouée : \\documentclass absent du LaTeX final.")
+
     return latex
 
 

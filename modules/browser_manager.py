@@ -33,6 +33,23 @@ logger = logging.getLogger(__name__)
 EventLogger = Callable[[str, str], None]  # (level, message)
 
 
+def _find_chrome_executable() -> Optional[str]:
+    """Retourne le chemin de Chrome/Edge système si le Chromium bundlé Playwright manque de VC++."""
+    from pathlib import Path
+    candidates = [
+        Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+        Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"),
+        Path.home() / r"AppData\Local\Google\Chrome\Application\chrome.exe",
+        Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+        Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+    ]
+    for p in candidates:
+        if p.exists():
+            logger.debug("Navigateur systeme utilise : %s", p)
+            return str(p)
+    return None
+
+
 def _default_event_logger(level: str, message: str) -> None:
     logger.log(getattr(logging, level.upper(), logging.INFO), message)
 
@@ -68,7 +85,10 @@ class BrowserSession:
 
         file_manager.ensure_directories()
         self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(headless=self.headless)
+        self._browser = self._pw.chromium.launch(
+            headless=self.headless,
+            executable_path=_find_chrome_executable(),
+        )
 
         cookies_path = self._cookies_path()
         storage = str(cookies_path) if cookies_path.exists() else None
