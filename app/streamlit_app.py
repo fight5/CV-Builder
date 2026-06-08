@@ -1,6 +1,8 @@
 """Interface Streamlit — 2 boutons :
   1. Candidature automatique
   2. CV | Lettre de motivation  (CV.pdf + Lettre_Motivation.pdf)
+
+  v2.1 — Auto Apply E2E intégré (CV source → génération → candidature automatique)
 """
 
 from __future__ import annotations
