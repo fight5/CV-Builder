@@ -31,7 +31,9 @@ try:
 except (FileNotFoundError, Exception):
     pass
 
+import importlib
 from modules import auto_apply_ui
+importlib.reload(auto_apply_ui)  # force reload after hot-deploy
 from modules.optimum_pipeline import (
     CVPreferences,
     extract_cv_text,
