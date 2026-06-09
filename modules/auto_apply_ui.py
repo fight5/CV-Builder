@@ -60,6 +60,52 @@ def _create_session_marker(platform: str) -> None:
         path.write_text('{"cookies":[],"origins":[]}', encoding="utf-8")
 
 
+def _launch_setup_script(platform: str) -> bool:
+    """Lance setup_linkedin_login.py (ou équivalent) dans un nouveau terminal.
+
+    Retourne True si le lancement a réussi, False sinon.
+    Fonctionne uniquement en local (pas sur Streamlit Cloud).
+    """
+    script_map = {
+        "linkedin": Path(__file__).resolve().parent.parent / "setup_linkedin_login.py",
+    }
+    script = script_map.get(platform)
+    if script is None or not script.exists():
+        return False
+
+    cwd = str(script.parent)
+    try:
+        if os.name == "nt":
+            # Windows : nouvelle fenêtre cmd qui reste ouverte
+            subprocess.Popen(
+                f'start cmd /k "{sys.executable}" "{script}"',
+                shell=True,
+                cwd=cwd,
+            )
+        else:
+            # Linux/Mac : nouveau terminal
+            for term in ("gnome-terminal --", "xterm -e", "osascript -e 'tell application \"Terminal\" to do script"):
+                try:
+                    subprocess.Popen(
+                        f'{term} "{sys.executable}" "{script}"',
+                        shell=True,
+                        cwd=cwd,
+                    )
+                    break
+                except Exception:
+                    continue
+        return True
+    except Exception:
+        return False
+
+
+def _persistent_profile_ready(platform: str) -> bool:
+    """Retourne True si le profil persistant Playwright est présent et non-vide."""
+    from modules.browser_manager import PERSISTENT_PROFILES_DIR
+    p = PERSISTENT_PROFILES_DIR / platform
+    return p.exists() and any(p.iterdir())
+
+
 def _spawn_runner(
     *,
     platform: str,
@@ -159,8 +205,8 @@ def render() -> None:
 
     r1, r2, r3 = st.columns([3, 3, 1])
     with r1:
-        keywords = st.text_input("Mots-clés de recherche", value="assistant comptable", key="auto_keywords",
-                                 placeholder="Ex : assistant comptable, comptable, data scientist…")
+        keywords = st.text_input("Mots-clés de recherche", value="Data Scientist", key="auto_keywords",
+                                 placeholder="Ex : Data Scientist, Data Engineer, assistant comptable…")
     with r2:
         location = st.text_input("Localisation", value="France", key="auto_location",
                                  placeholder="Ex : Paris, France, Remote…")
@@ -215,31 +261,64 @@ def render() -> None:
                 continue
 
             if has_persistent:
-                # Le profil persistant est géré via setup_linkedin_login.py
+                # Profil actif — bouton "Changer de compte" pour relancer le setup
                 st.caption("🔒 Profil Playwright actif — connexion stable.")
-                with st.expander("Reconnecter ?"):
-                    st.markdown(
-                        "Pour changer de compte, lancez dans votre terminal Windows :\n"
-                        "```\npython setup_linkedin_login.py\n```\n"
-                        "Connectez-vous dans la fenêtre qui s'ouvre."
-                    )
-            else:
                 if st.button(
-                    "Se connecter" if not connected else "Re-connecter",
+                    "🔄 Changer de compte",
+                    key=f"btn_switch_{key}",
+                    use_container_width=True,
+                    help="Lance setup_linkedin_login.py dans un nouveau terminal.",
+                ):
+                    launched = _launch_setup_script(key)
+                    if launched:
+                        st.session_state[f"login_launching_{key}"] = True
+                        st.info(
+                            "🌐 Navigateur ouvert — connectez-vous au nouveau compte. "
+                            "Le badge se mettra à jour automatiquement."
+                        )
+                    else:
+                        st.warning(
+                            "Lancement automatique impossible. Lancez manuellement :\n"
+                            f"```\npython setup_linkedin_login.py\n```"
+                        )
+            else:
+                login_label = "Se connecter" if not connected else "Re-connecter"
+                if st.button(
+                    f"🔑 {login_label}",
                     key=f"btn_login_{key}",
                     disabled=_proc_alive(st.session_state.runner_proc),
                     use_container_width=True,
+                    type="primary",
                 ):
-                    st.session_state[f"login_pending_{key}"] = True
+                    launched = _launch_setup_script(key)
+                    if launched:
+                        st.session_state[f"login_launching_{key}"] = True
+                    else:
+                        st.session_state[f"login_pending_{key}"] = True
                     st.rerun()
 
-                # Instruction + confirmation après clic "Se connecter"
-                if st.session_state.get(f"login_pending_{key}"):
+                # Lancement en cours — polling auto
+                if st.session_state.get(f"login_launching_{key}"):
+                    if _persistent_profile_ready(key):
+                        st.success(f"✅ Connexion {spec.label} détectée !")
+                        st.session_state[f"login_launching_{key}"] = False
+                        st.rerun()
+                    else:
+                        st.info(
+                            "🌐 **Navigateur ouvert** — connectez-vous à "
+                            f"{spec.label} dans la fenêtre qui s'est ouverte.\n\n"
+                            "Cette page se rafraîchira automatiquement une fois connecté."
+                        )
+                        # Auto-rerun toutes les 3s jusqu'à détection du profil
+                        time.sleep(3)
+                        st.rerun()
+
+                # Fallback manuel si lancement auto a échoué
+                elif st.session_state.get(f"login_pending_{key}"):
                     st.warning(
-                        "⚠️ Pour LinkedIn, la connexion via profil Playwright persistant "
-                        "est recommandée pour éviter la détection bot.\n\n"
-                        "Lancez dans votre terminal :\n"
-                        "```\npython setup_linkedin_login.py\n```"
+                        "⚠️ Lancez manuellement dans votre terminal :\n"
+                        "```\npython setup_linkedin_login.py\n```\n"
+                        "Connectez-vous dans la fenêtre qui s'ouvre, puis cliquez ▼"
                     )
                     if st.button("✅ Confirmer connexion JSON", key=f"btn_confirm_{key}",
                                  use_container_width=True):
