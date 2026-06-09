@@ -193,11 +193,23 @@ RÈGLES STRICTES :
 6. Enrichir les bullets d'expérience avec les outils/résultats de l'offre
    tout en restant cohérent avec la mission réelle.
 7. Quantifier le plus possible (%, volumes, échelle).
-8. summary : 3-5 lignes max, ancré sur le CV source, orienté offre.
+8. summary : 2-3 lignes max, ancré sur le CV source, orienté offre.
 9. Si un champ liste est vide (ex. aucune certification), mettre [].
 10. IMPORTANT — retourner du texte BRUT dans les valeurs JSON.
     Ne pas utiliser de caractères d'échappement LaTeX (pas de \\& \\% \\# \\_).
     Le code Python se chargera de l'échappement LaTeX après parsing.
+
+CONTRAINTE 1 PAGE (IMPÉRATIVE) — le CV DOIT tenir sur une seule page A4 :
+- summary : 2 phrases maximum, concises.
+- experiences : conserver les 3 expériences les plus récentes MAXIMUM.
+- bullets par expérience : 3 maximum pour les 2 dernières, 2 pour les plus anciennes.
+- education : 2 entrées maximum.
+- certifications : 4 items maximum.
+- skills : 7 items maximum.
+- tools : 8 items maximum.
+- qualities : 4 items maximum.
+- awards : 2 items maximum.
+- Chaque bullet : 1 ligne courte (< 100 caractères), pas de phrases longues.
 
 LANGUE de tout le contenu : {language_label}
 
@@ -537,7 +549,9 @@ def _build_section_block_minimal(title: str, items: list[str]) -> str:
     )
 
 
-def _build_experiences_block(experiences: list[dict], is_optimum: bool) -> str:
+def _build_experiences_block(
+    experiences: list[dict], is_optimum: bool, extra_assets: Optional[dict] = None
+) -> str:
     blocks = []
     for exp in experiences:
         title   = _latex_escape(exp.get("title", ""))
@@ -548,7 +562,7 @@ def _build_experiences_block(experiences: list[dict], is_optimum: bool) -> str:
         rows = "\n".join(f"\\item {_latex_escape(str(b))}" for b in bullets)
 
         # Logo de l'entreprise (depuis templates/assets/ ou extra_assets)
-        logo = _find_logo(company_raw, extra_filenames=prefs.extra_assets)
+        logo = _find_logo(company_raw, extra_filenames=extra_assets)
         logo_tex = f"\\safeimage{{{logo}}}{{0.20\\textwidth}}" if logo else ""
 
         if is_optimum:
@@ -571,7 +585,7 @@ def _build_experiences_block(experiences: list[dict], is_optimum: bool) -> str:
     return "\n".join(blocks)
 
 
-def _build_education_block(education: list[dict]) -> str:
+def _build_education_block(education: list[dict], extra_assets: Optional[dict] = None) -> str:
     lines = []
     for edu in education:
         degree = _latex_escape(edu.get("degree", ""))
@@ -580,7 +594,7 @@ def _build_education_block(education: list[dict]) -> str:
         dates  = _latex_escape(edu.get("dates", ""))
 
         # Logo de l'école (depuis templates/assets/ ou extra_assets)
-        logo = _find_logo(school_raw, extra_filenames=prefs.extra_assets)
+        logo = _find_logo(school_raw, extra_filenames=extra_assets)
         logo_tex = f"\\safeimage{{{logo}}}{{0.10\\textwidth}}" if logo else ""
 
         lines.append(
@@ -636,11 +650,11 @@ def _build_latex_from_json(data: dict, template: str, prefs: CVPreferences) -> s
     # ── Expériences & Formation ──────────────────────────────────────────────
     result = result.replace(
         "{{EXPERIENCES_BLOCK}}",
-        _build_experiences_block(data.get("experiences", []), is_optimum),
+        _build_experiences_block(data.get("experiences", []), is_optimum, prefs.extra_assets),
     )
     result = result.replace(
         "{{EDUCATION_BLOCK}}",
-        _build_education_block(data.get("education", [])),
+        _build_education_block(data.get("education", []), prefs.extra_assets),
     )
     return result
 
@@ -865,24 +879,39 @@ def _build_letter_latex(
 
 # ── Compilation PDF ──────────────────────────────────────────────────────────
 def _tighten_latex_for_one_page(latex_src: str) -> str:
-    """Réduit marges + taille de police pour forcer 1 page."""
-    # Réduire la taille de police (9.5pt → 9pt)
+    """Réduit marges + police + interligne pour forcer 1 page."""
+    # Réduire la taille de police (9.5pt → 8.5pt)
     patched = re.sub(
         r'(\\documentclass\[)[\d.]+pt',
-        r'\g<1>9pt',
+        r'\g<1>8.5pt',
         latex_src,
     )
     # Réduire les marges (geometry)
     patched = re.sub(
         r'\\usepackage\[margin=[^\]]+\]\{geometry\}',
-        r'\\usepackage[margin=0.9cm,top=0.65cm,bottom=0.65cm]{geometry}',
+        r'\\usepackage[margin=0.75cm,top=0.55cm,bottom=0.55cm]{geometry}',
         patched,
     )
     # Réduire l'espacement vertical entre sections
+    for old, new in [
+        (r'\vspace{0.6em}', r'\vspace{0.05em}'),
+        (r'\vspace{0.4em}', r'\vspace{0.02em}'),
+        (r'\vspace{0.45cm}', r'\vspace{0.15cm}'),
+        (r'\vspace{0.1cm}', r'\vspace{0.02cm}'),
+        (r'\vspace{0.2cm}', r'\vspace{0.05cm}'),
+    ]:
+        patched = patched.replace(old, new)
+    # Injecter juste avant \begin{document} : interligne serré + enumerate compact
+    inject = (
+        r'\linespread{0.88}\selectfont' + '\n'
+        r'\usepackage{enumitem}' + '\n'
+        r'\setlist{nosep,topsep=1pt,parsep=0pt,partopsep=0pt,leftmargin=1.2em}' + '\n'
+    )
+    patched = patched.replace(r'\begin{document}', inject + r'\begin{document}')
+    # Ajouter \enlargethispage* juste après \begin{document}
     patched = patched.replace(
-        r'\vspace{0.6em}', r'\vspace{0.2em}'
-    ).replace(
-        r'\vspace{0.4em}', r'\vspace{0.1em}'
+        r'\begin{document}' + '\n',
+        r'\begin{document}' + '\n' + r'\enlargethispage*{4\baselineskip}' + '\n',
     )
     return patched
 
