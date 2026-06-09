@@ -21,15 +21,22 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
 
+_IS_CLOUD = False
 try:
     for _k in (
         "GOOGLE_API_KEY", "GEMINI_API_KEY", "GEMINI_MODEL",
         "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL", "LLM_PROVIDER",
+        "DEPLOYMENT_MODE",
     ):
         if _k in st.secrets and not os.getenv(_k):
             os.environ[_k] = str(st.secrets[_k])
+    _IS_CLOUD = (os.getenv("DEPLOYMENT_MODE", "").lower() == "cloud")
 except (FileNotFoundError, Exception):
     pass
+
+# Détecter Streamlit Cloud via variable d'env injectée automatiquement
+if not _IS_CLOUD:
+    _IS_CLOUD = bool(os.getenv("STREAMLIT_SHARING_MODE") or os.getenv("IS_STREAMLIT_CLOUD"))
 
 import importlib
 from modules import auto_apply_ui
@@ -145,26 +152,67 @@ def _render_cv_letter():
             help="Utilisé uniquement pour le template Optimum.",
         )
 
-    include_photo = st.toggle("Inclure une photo", value=False)
-    photo_path: str | None = None
-    if include_photo:
-        photo_file = st.file_uploader(
-            "Téléverser une photo (JPG/PNG)",
-            type=["jpg", "jpeg", "png"],
-            key="optimum_photo_upload",
+    # ── Photos & Logos ───────────────────────────────────────────────────────
+    with st.expander("📎 Photos & Logos (facultatif)"):
+        st.caption(
+            "Uploadez votre photo d'identité et/ou les logos des entreprises / "
+            "écoles de votre CV. Les logos sont automatiquement associés aux noms "
+            "présents dans votre CV (ex. 'Sanofi.png' → expérience Sanofi)."
         )
+        ph_col, logo_col = st.columns(2)
+        with ph_col:
+            st.markdown("**📷 Photo d'identité**")
+            photo_file = st.file_uploader(
+                "Photo (JPG/PNG)",
+                type=["jpg", "jpeg", "png"],
+                key="optimum_photo_upload",
+                label_visibility="collapsed",
+            )
+        with logo_col:
+            st.markdown("**🏢 Logos (plusieurs possibles)**")
+            logo_files = st.file_uploader(
+                "Logos (JPG/PNG)",
+                type=["jpg", "jpeg", "png"],
+                key="optimum_logo_upload",
+                accept_multiple_files=True,
+                label_visibility="collapsed",
+            )
+
+        include_photo = False
+        photo_path: str | None = None
+        extra_assets: dict = {}
+
         if photo_file:
+            include_photo = True
             suffix = Path(photo_file.name).suffix.lower()
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                 tmp.write(photo_file.read())
                 photo_path = tmp.name
-            st.image(photo_file, width=120, caption="Aperçu")
+            st.image(photo_file, width=100, caption=photo_file.name)
+
+        if logo_files:
+            logo_preview_cols = st.columns(min(len(logo_files), 5))
+            for i, lf in enumerate(logo_files):
+                suffix = Path(lf.name).suffix.lower()
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    tmp.write(lf.read())
+                    tmp_path = tmp.name
+                extra_assets[lf.name] = tmp_path
+                with logo_preview_cols[i % len(logo_preview_cols)]:
+                    st.image(lf, width=80, caption=Path(lf.name).stem)
+
+    # ── Lettre de motivation ─────────────────────────────────────────────────
+    generate_letter = st.checkbox(
+        "✉️ Générer aussi une lettre de motivation",
+        value=False,
+        help="Non coché par défaut — activez si vous souhaitez une LM personnalisée.",
+    )
 
     st.markdown("")
     btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
     with btn_col2:
         run = st.button(
-            "Générer CV et Lettre de motivation",
+            "Générer le CV",
             type="primary",
             use_container_width=True,
             disabled=not (job_offer.strip() and cv_text.strip()),
@@ -185,8 +233,15 @@ def _render_cv_letter():
             photo_path=photo_path,
             aggressive=True,
             company=company.strip(),
+            generate_letter=generate_letter,
+            extra_assets=extra_assets,
         )
-        with st.spinner("Génération en cours, CV optimisé puis lettre de motivation…"):
+        spinner_msg = (
+            "Génération du CV optimisé + lettre de motivation en cours…"
+            if generate_letter
+            else "Génération du CV optimisé en cours…"
+        )
+        with st.spinner(spinner_msg):
             try:
                 st.session_state.optimum_result = run_optimum_pipeline(
                     job_offer, cv_text, prefs
@@ -211,6 +266,7 @@ def _render_cv_letter():
     lm_bytes = result.get("letter_pdf_bytes")
     cv_name = result.get("cv_filename", "CV.pdf")
     lm_name = result.get("letter_filename", "Lettre_Motivation.pdf")
+    has_letter = bool(lm_bytes or result.get("letter_body"))
 
     st.subheader("Vos documents sont prêts")
     st.caption(
@@ -219,11 +275,20 @@ def _render_cv_letter():
         f"Entreprise : **{result.get('company','?')}**"
     )
 
-    dl1, dl2 = st.columns(2)
+    # Avertissements 1 page si présents
+    for warn in result.get("cv_errors", []):
+        if warn.startswith("⚠"):
+            st.warning(warn)
+
+    if has_letter:
+        dl1, dl2 = st.columns(2)
+    else:
+        dl1, _ = st.columns([1, 1])
+
     with dl1:
         if cv_bytes:
             st.download_button(
-                f"Télécharger {cv_name}",
+                f"⬇️ Télécharger {cv_name}",
                 data=cv_bytes,
                 file_name=cv_name,
                 mime="application/pdf",
@@ -233,30 +298,33 @@ def _render_cv_letter():
         else:
             st.button("CV non disponible", disabled=True, use_container_width=True)
             for err in result.get("cv_errors", []):
-                st.warning(err)
-    with dl2:
-        if lm_bytes:
-            st.download_button(
-                f"Télécharger {lm_name}",
-                data=lm_bytes,
-                file_name=lm_name,
-                mime="application/pdf",
-                use_container_width=True,
-                type="primary",
-            )
-        else:
-            st.button("Lettre non disponible", disabled=True, use_container_width=True)
-            for err in result.get("letter_errors", []):
-                st.warning(err)
+                if not err.startswith("⚠"):
+                    st.warning(err)
 
-    st.markdown("---")
-    st.subheader("Lettre (texte)")
-    st.text_area(
-        "Corps de la lettre",
-        value=result.get("letter_body", ""),
-        height=320,
-        label_visibility="collapsed",
-    )
+    if has_letter:
+        with dl2:
+            if lm_bytes:
+                st.download_button(
+                    f"⬇️ Télécharger {lm_name}",
+                    data=lm_bytes,
+                    file_name=lm_name,
+                    mime="application/pdf",
+                    use_container_width=True,
+                    type="primary",
+                )
+            else:
+                st.button("Lettre non disponible", disabled=True, use_container_width=True)
+                for err in result.get("letter_errors", []):
+                    st.warning(err)
+
+        st.markdown("---")
+        st.subheader("Lettre (texte)")
+        st.text_area(
+            "Corps de la lettre",
+            value=result.get("letter_body", ""),
+            height=320,
+            label_visibility="collapsed",
+        )
 
 
 # ── Routeur principal — 2 boutons ────────────────────────────────────────────
@@ -264,27 +332,39 @@ def main():
     if "page" not in st.session_state:
         st.session_state.page = "cv_letter"
 
-    nav_cols = st.columns([1, 1, 5])
-    with nav_cols[0]:
-        if st.button(
-            "Candidature automatique",
-            type="primary" if st.session_state.page == "auto" else "secondary",
-            use_container_width=True,
-        ):
-            st.session_state.page = "auto"
-            st.rerun()
-    with nav_cols[1]:
-        if st.button(
-            "CV | Lettre de motivation",
-            type="primary" if st.session_state.page == "cv_letter" else "secondary",
-            use_container_width=True,
-        ):
-            st.session_state.page = "cv_letter"
-            st.rerun()
+    if _IS_CLOUD:
+        # Sur Streamlit Cloud : uniquement la page CV (pas de Playwright)
+        st.session_state.page = "cv_letter"
+        nav_cols = st.columns([1, 5])
+        with nav_cols[0]:
+            st.button(
+                "CV | Lettre de motivation",
+                type="primary",
+                use_container_width=True,
+                disabled=True,
+            )
+    else:
+        nav_cols = st.columns([1, 1, 5])
+        with nav_cols[0]:
+            if st.button(
+                "Candidature automatique",
+                type="primary" if st.session_state.page == "auto" else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state.page = "auto"
+                st.rerun()
+        with nav_cols[1]:
+            if st.button(
+                "CV | Lettre de motivation",
+                type="primary" if st.session_state.page == "cv_letter" else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state.page = "cv_letter"
+                st.rerun()
 
     st.markdown("---")
 
-    if st.session_state.page == "auto":
+    if st.session_state.page == "auto" and not _IS_CLOUD:
         auto_apply_ui.render()
     else:
         _render_cv_letter()

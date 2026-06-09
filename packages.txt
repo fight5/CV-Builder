@@ -4,4 +4,6 @@ texlive-latex-extra
 texlive-fonts-recommended
 texlive-fonts-extra
 texlive-xetex
+texlive-lang-french
 lmodern
+cm-super

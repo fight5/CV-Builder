@@ -65,7 +65,9 @@ Profil recherché :
 def main():
     parser = argparse.ArgumentParser(description="Test E2E pipeline CV Builder")
     parser.add_argument("--linkedin", action="store_true",
-                        help="Lancer aussi un test LinkedIn (DRY RUN headless)")
+                        help="Lancer aussi un test LinkedIn (recherche + candidature)")
+    parser.add_argument("--apply", action="store_true",
+                        help="Avec --linkedin : tenter aussi de postuler (semi-auto)")
     parser.add_argument("--template", default="optimum", choices=["optimum", "minimal"])
     parser.add_argument("--no-pdf", action="store_true",
                         help="Sauter la compilation pdflatex (test LLM uniquement)")
@@ -167,51 +169,141 @@ def main():
         print("\n-- Extrait lettre de motivation ---------------------------")
         print(letter_body[:600].strip() + ("..." if len(letter_body) > 600 else ""))
 
-    # -- 6. Test LinkedIn (DRY RUN) --------------------------------------------
+    # -- 6. Test LinkedIn -------------------------------------------------------
     if args.linkedin:
         print("\n" + "=" * 60)
-        print("TEST LINKEDIN — DRY RUN")
+        print("TEST LINKEDIN — RECHERCHE + CANDIDATURE")
         print("=" * 60)
-        _test_linkedin_dry_run()
+        _test_linkedin(apply=args.apply)
 
     print("\n[OK] Test E2E terminé.")
 
 
-def _test_linkedin_dry_run():
-    """Lance un DRY RUN LinkedIn : recherche les offres sans postuler."""
-    from modules.browser_manager import BrowserSession, JsonlEventLogger
+def _session_is_empty(cookies_path) -> bool:
+    """Retourne True si le fichier cookies n'existe pas ou ne contient pas de cookies."""
+    import json as _json
+    if not cookies_path.exists():
+        return True
+    try:
+        data = _json.loads(cookies_path.read_text(encoding="utf-8"))
+        return not bool(data.get("cookies"))
+    except Exception:
+        return True
+
+
+def _test_linkedin(apply: bool = False):
+    """Recherche des offres LinkedIn et tente de postuler (mode semi-auto)."""
+    from modules.browser_manager import BrowserSession, PERSISTENT_PROFILES_DIR
     from modules import config, file_manager
-    from modules.linkedin_apply import search_jobs
+    from modules.linkedin_apply import search_jobs, apply_to_job, LOGIN_URL, READY_SELECTOR
 
     file_manager.ensure_directories()
 
-    cookies_path = config.COOKIES_DIR / "linkedin.json"
-    if not cookies_path.exists():
-        print("[WARN] Pas de session LinkedIn sauvegardée.")
-        print("       Lance l'app Streamlit, clique 'Se connecter' -> 'Confirmer', puis relance.")
-        return
+    # Vérifier si le profil persistant existe (priorité sur storage_state JSON)
+    persistent_dir = PERSISTENT_PROFILES_DIR / "linkedin"
+    has_persistent = persistent_dir.exists() and any(persistent_dir.iterdir())
 
-    event_log = []
+    cookies_path = config.COOKIES_DIR / "linkedin.json"
+    need_login = not has_persistent and _session_is_empty(cookies_path)
+
+    print(f"  [INFO] Profil persistant : {'OK' if has_persistent else 'absent (sera créé)'}")
+    print(f"  [INFO] Storage state JSON: {'OK' if not _session_is_empty(cookies_path) else 'vide'}")
+
     def logger(level, msg):
         print(f"  [{level.upper():<7}] {msg}")
-        event_log.append((level, msg))
 
-    print("[...] Ouverture LinkedIn (headed)...")
+    import time as _t
+
+    print("[...] Ouverture navigateur Playwright (headed)...")
     try:
         with BrowserSession("linkedin", headless=False, event_logger=logger) as session:
+
+            # ── 1. Vérifier si le profil persistant est déjà connecté ────────
+            print("[...] Vérification connexion LinkedIn dans le profil persistant...")
+            session.page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")
+            _t.sleep(2)
+
+            # Vérification login via cookie li_at (plus fiable que les sélecteurs CSS)
+            is_logged_in = session._is_linkedin_logged_in()
+            print(f"  [INFO] Connecté (li_at cookie) : {'OUI' if is_logged_in else 'NON'}")
+
+            if not is_logged_in:
+                print()
+                print("  ┌─────────────────────────────────────────────────────┐")
+                print("  │  ACTION REQUISE — connectez-vous à LinkedIn         │")
+                print("  │                                                     │")
+                print("  │  1. Regardez la fenêtre Chrome/Chromium ouverte     │")
+                print("  │  2. Connectez-vous à LinkedIn (email + mot de passe)│")
+                print("  │  3. Terminez toute vérification 2FA si demandée     │")
+                print("  │  4. Attendez d'être sur la page d'accueil LinkedIn  │")
+                print("  │  5. Revenez ici et appuyez sur ENTRÉE               │")
+                print("  └─────────────────────────────────────────────────────┘")
+                print()
+                # Naviguer vers login si pas déjà là
+                session.page.goto(LOGIN_URL, wait_until="domcontentloaded")
+                _t.sleep(2)
+
+                input("  >>> Appuyez sur ENTRÉE une fois connecté : ")
+                _t.sleep(2)
+
+                # Vérifier connexion après confirmation manuelle
+                is_logged_now = session._is_linkedin_logged_in()
+                print(f"  [INFO] Connexion vérifiée : {'OUI (li_at présent)' if is_logged_now else 'NON (li_at absent)'}")
+                if not is_logged_now:
+                    # Dump debug cookies
+                    try:
+                        all_cookies = session._context.cookies()
+                        li_cookies = [c["name"] for c in all_cookies if "linkedin" in c.get("domain", "")]
+                        print(f"  [DEBUG] Cookies LinkedIn présents : {li_cookies}")
+                    except Exception:
+                        pass
+                    print("  [WARN] Pas de li_at — login peut-être incomplet. Poursuite quand même...")
+
+                # Sauvegarder le profil
+                session.save_cookies()
+                print("  [OK] Profil sauvegardé.")
+
+            # ── 2. Recherche ──────────────────────────────────────────────────
+            print()
+            print("[...] Recherche offres Easy Apply...")
             jobs = search_jobs(
                 session,
-                keywords="AI engineer agentic",
+                keywords="data scientist",
                 location="Paris",
-                max_results=3,
+                max_results=5,
             )
-            if jobs:
-                print(f"\n[OK] {len(jobs)} offre(s) trouvée(s) :")
-                for j in jobs:
-                    print(f"     • {j.title} @ {j.company} — {j.url[:60]}...")
-            else:
-                print("[WARN] 0 offre Easy Apply trouvée (essaie avec d'autres mots-clés).")
-            print("\n[OK] DRY RUN terminé — aucune candidature soumise.")
+
+            if not jobs:
+                print("[WARN] 0 offre Easy Apply trouvée.")
+                return
+
+            print(f"\n[OK] {len(jobs)} offre(s) trouvée(s) :")
+            for j in jobs:
+                print(f"     • {j.title} @ {j.company}")
+
+            if not apply:
+                print("\n[OK] DRY RUN terminé — aucune candidature soumise.")
+                print("     Relancez avec --linkedin --apply pour tenter de postuler.")
+                return
+
+            # ── 3. Candidature (semi-auto : soumission désactivée) ────────────
+            print()
+            print("[...] Test candidature sur le 1er résultat (mode semi-auto)...")
+            job = jobs[0]
+            status, notes = apply_to_job(
+                session,
+                job,
+                auto_submit=False,   # Semi-auto : on s'arrête avant le Submit
+            )
+            print(f"\n  Job    : {job.title} @ {job.company}")
+            print(f"  Status : {status}")
+            print(f"  Notes  : {notes[:200]}")
+
+            if status == "need_login":
+                print()
+                print("  [!] Page statique malgré session — vérifiez que le cookie LinkedIn est valide.")
+                print("  [!] Astuce : relancez avec --linkedin pour refaire le login dans Playwright.")
+
     except Exception as e:
         print(f"[ERREUR] LinkedIn test : {e}")
         import traceback; traceback.print_exc()

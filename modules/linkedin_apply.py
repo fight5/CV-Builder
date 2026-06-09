@@ -42,31 +42,96 @@ class Job:
 
 # ── Recherche ────────────────────────────────────────────────────────────────
 def _dismiss_cookie_banner(session: BrowserSession) -> None:
-    """Ferme la bannière de consentement cookies LinkedIn si présente."""
+    """Ferme la bannière de consentement cookies LinkedIn si présente.
+
+    Utilise d'abord JS pour bypasser tout overlay bloquant, puis fallback
+    sur les sélecteurs Playwright classiques.
+    """
+    import time
+
+    # Méthode 1 : JS evaluate (bypass overlay, plus fiable)
+    try:
+        clicked = session.page.evaluate("""
+            () => {
+                // Boutons artdeco-global-alert (RGPD LinkedIn 2024-2025)
+                const alertBtns = document.querySelectorAll(
+                    'button.artdeco-global-alert-action'
+                );
+                for (const btn of alertBtns) {
+                    const txt = (btn.textContent || '').trim().toLowerCase();
+                    if (txt.includes('accept') || txt.includes('accepter') ||
+                        txt.includes('agree') || txt.includes('allow') ||
+                        txt.includes('autoriser')) {
+                        btn.click();
+                        return true;
+                    }
+                }
+                // Fallback attribut action-type
+                const accept = document.querySelector(
+                    'button[action-type="ACCEPT"], ' +
+                    'button[data-control-name="ga-cookie.consent.accept.v3"]'
+                );
+                if (accept) { accept.click(); return true; }
+                return false;
+            }
+        """)
+        if clicked:
+            session.log("info", "Bannière cookie fermée (JS).")
+            time.sleep(1.2)
+            return
+    except Exception:
+        pass
+
+    # Méthode 2 : sélecteurs Playwright (fallback)
     for sel in (
+        "button.artdeco-global-alert-action",
         "button[action-type='ACCEPT']",
         "button[data-control-name='ga-cookie.consent.accept.v3']",
-        "button.artdeco-global-alert__dismiss",
         "#artdeco-global-alert-container button",
+        "button.artdeco-global-alert__dismiss",
     ):
         try:
             btn = session.page.locator(sel).first
             if btn.count() and btn.is_visible(timeout=1500):
                 btn.click()
-                session.log("info", "Bannière cookie fermée.")
-                import time; time.sleep(1.5)
+                session.log("info", f"Bannière cookie fermée ({sel}).")
+                time.sleep(1.2)
                 return
         except Exception:
             continue
 
 
 def _detect_page_mode(session: BrowserSession) -> str:
-    """Retourne 'spa' (React logged-in) ou 'static' (public/bot) selon le DOM présent."""
-    # Mode SPA (connecté) : li avec data-occludable-job-id
+    """Retourne 'spa' ou 'static' pour la page de RECHERCHE LinkedIn."""
     if session.page.locator("li[data-occludable-job-id]").count() > 0:
         return "spa"
-    # Mode statique (non connecté ou bot-detected) : div.base-card--link
     if session.page.locator("div.base-card--link").count() > 0:
+        return "static"
+    return "unknown"
+
+
+def _detect_page_mode_job(session: BrowserSession) -> str:
+    """Retourne 'spa' ou 'static' pour une page DETAIL d'offre LinkedIn.
+
+    LinkedIn 2025 SPA : le bouton s'appelle "Candidature simplifiée" (FR)
+    ou "Easy Apply" (EN). La nav globale et le h1 titre sont aussi présents.
+    """
+    # Mode SPA (connecté) — LinkedIn 2025 (classes CSS minifiées + Shadow DOM)
+    # get_by_role() traverse le Shadow DOM → plus fiable que les sélecteurs CSS
+    for indicator in ("Enregistrer", "Candidature", "Apply", "Postuler"):
+        try:
+            if session.page.get_by_role("button", name=indicator, exact=False).count() > 0:
+                return "spa"
+        except Exception:
+            pass
+    # Fallback CSS : h1 ou classes LinkedIn connues
+    if session.page.locator("h1, button.jobs-apply-button").count() > 0:
+        return "spa"
+    # Mode statique : top-card public LinkedIn (non connecté)
+    if session.page.locator(
+        "div.top-card-layout, div.show-more-less-html, "
+        "section.core-section-container"
+    ).count() > 0:
         return "static"
     return "unknown"
 
@@ -89,23 +154,26 @@ def search_jobs(
         location=urllib.parse.quote(location or ""),
     )
     session.log("info", f"LinkedIn — recherche : {url}")
-    session.page.goto(url, wait_until="domcontentloaded")
+    session.page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
     # Fermer bannière cookie si présente
     _dismiss_cookie_banner(session)
 
-    # Attendre les cards (jusqu'à 12s)
+    # Attendre les cards — SPA en priorité (jusqu'à 15s), puis static (5s)
     import time
-    for sel in ("li[data-occludable-job-id]", "div.base-card--link"):
+    time.sleep(2)  # laisser la SPA React démarrer
+    try:
+        session.page.wait_for_selector("li[data-occludable-job-id]", timeout=15000)
+    except Exception:
         try:
-            session.page.wait_for_selector(sel, timeout=12000)
-            break
+            session.page.wait_for_selector("div.base-card--link", timeout=5000)
         except Exception:
-            continue
+            pass
 
     session.human_pause()
     page_mode = _detect_page_mode(session)
-    session.log("info", f"LinkedIn page mode : {page_mode}")
+    current_url = session.page.url
+    session.log("info", f"LinkedIn page mode : {page_mode} | URL: {current_url[:80]}")
 
     jobs: dict[str, Job] = {}
     last_count = -1
@@ -180,10 +248,33 @@ def _parse_cards_spa(
     return jobs
 
 
+def _normalize_job_url(url: str) -> str:
+    """Convertit une URL LinkedIn publique (fr.linkedin.com, slug textuel) en URL SPA.
+
+    fr.linkedin.com/jobs/view/data-scientist-at-canopee-4179375547
+    → www.linkedin.com/jobs/view/4179375547/
+
+    Toujours utiliser www.linkedin.com pour obtenir la version React (SPA)
+    lorsqu'on est connecté. fr.linkedin.com et les slugs textuels renvoient
+    systématiquement du HTML statique même avec une session active.
+    """
+    import re as _re
+    # Extraire l'ID numérique final de l'URL (dernier segment de chiffres)
+    m = _re.search(r"[/-](\d{7,})(?:[/?#]|$)", url)
+    if m:
+        return f"https://www.linkedin.com/jobs/view/{m.group(1)}/"
+    # Fallback : remplacer juste le sous-domaine
+    return url.replace("fr.linkedin.com", "www.linkedin.com")
+
+
 def _parse_cards_static(
     session: BrowserSession, jobs: dict, max_results: int
 ) -> dict:
-    """Parse les cards en mode statique (LinkedIn public / bot-detected)."""
+    """Parse les cards en mode statique (LinkedIn public / bot-detected).
+
+    Les URLs sont normalisées vers www.linkedin.com/jobs/view/{id}/ pour
+    pouvoir naviguer en mode SPA lors de la candidature.
+    """
     import re as _re
     cards = session.page.locator("div.base-card--link")
     for i in range(cards.count()):
@@ -204,8 +295,9 @@ def _parse_cards_static(
             href = link_el.get_attribute("href") if link_el.count() else None
             if not href:
                 continue
-            full_url = href if href.startswith("http") else f"https://www.linkedin.com{href}"
-            # Extraire l'ID numérique de l'URL si disponible
+            raw_url = href if href.startswith("http") else f"https://www.linkedin.com{href}"
+            # Normaliser vers l'URL SPA (www.linkedin.com + ID numérique)
+            full_url = _normalize_job_url(raw_url)
             m = _re.search(r"/jobs/view/(\d+)", full_url)
             job_id = m.group(1) if m else full_url
             if job_id not in jobs:
@@ -216,6 +308,11 @@ def _parse_cards_static(
 
 
 # ── Candidature ──────────────────────────────────────────────────────────────
+def _js_click(locator) -> None:
+    """Force un click via JS pour bypasser les overlays."""
+    locator.evaluate("el => el.click()")
+
+
 def apply_to_job(
     session: BrowserSession,
     job: Job,
@@ -226,96 +323,408 @@ def apply_to_job(
 ) -> tuple[str, str]:
     """Tente Easy Apply sur une offre. Retourne (status, notes).
 
-    status ∈ {"submitted", "skipped", "failed"}.
-    - submitted : formulaire envoyé.
-    - skipped   : modal multi-étapes ou questions non remplies — pas de soumission.
-    - failed    : erreur Playwright (timeout, sélecteur introuvable, etc.).
+    status ∈ {"submitted", "skipped", "failed", "need_login"}.
+    - submitted   : formulaire envoyé.
+    - skipped     : modal multi-étapes ou questions non remplies — pas de soumission.
+    - failed      : erreur Playwright (timeout, sélecteur introuvable, etc.).
+    - need_login  : page en mode statique (non connecté) — login requis.
     """
-    session.log("info", f"LinkedIn — ouverture : {job.title} @ {job.company}")
-    session.page.goto(job.url, wait_until="domcontentloaded")
+    import time as _time
+
+    # Normaliser l'URL vers www.linkedin.com (SPA) avant navigation.
+    spa_url = _normalize_job_url(job.url)
+    session.log("info", f"LinkedIn — ouverture : {job.title} @ {job.company} — {spa_url}")
+    session.page.goto(spa_url, wait_until="domcontentloaded", timeout=60000)
+    _time.sleep(3)
+
+    # Fermer bannière cookie si présente
+    _dismiss_cookie_banner(session)
     session.human_pause()
     session.check_stop()
 
-    # Bouton "Postuler" Easy Apply.
-    apply_btn = session.page.locator(
-        "button.jobs-apply-button:not(.artdeco-button--disabled), "
-        "button[aria-label*='Easy Apply' i], button[aria-label*='Postuler' i]"
-    ).first
-    if not apply_btn.count():
-        return "skipped", "Bouton Easy Apply introuvable (offre externe ?)"
+    # Détecter mode page pour adapter la stratégie
+    page_mode = _detect_page_mode_job(session)
+    session.log("info", f"Job page mode : {page_mode}")
 
+    if page_mode == "static":
+        # LinkedIn en mode statique = non connecté (ou bot-detected malgré stealth).
+        # Easy Apply est inaccessible dans cet état.
+        screenshot = session.screenshot(f"static_{job.job_id}")
+        return (
+            "need_login",
+            f"Page statique (non connecté) — Easy Apply inaccessible. "
+            f"Screenshot: {screenshot.name}"
+        )
+
+    # ── Mode SPA (connecté) ───────────────────────────────────────────────────
+    # Chercher le bouton "Candidature simplifiée" (FR) / "Easy Apply" (EN).
+    # LinkedIn 2025 : toutes les classes CSS sont des hashes minifiés.
+    # On se base sur le TEXTE et aria-label plutôt que sur les classes.
+
+    # Attendre que la page ait chargé le panneau d'offre React (jusqu'à 20s).
+    # IMPORTANT : on N'inclut PAS "h1" car h1 est toujours présent (résolution immédiate)
+    # → on attend spécifiquement les boutons d'action de l'offre.
+    content_ready_sel = (
+        "button:has-text('Candidature'), "   # FR — "Candidature simplifiée"
+        "button:has-text('Enregistrer'), "   # FR — toujours présent sur les offres SPA
+        "button:has-text('Apply'), "         # EN
+        "button:has-text('Save')"            # EN fallback
+    )
     try:
-        apply_btn.click()
-    except Exception as e:
-        return "failed", f"Click Apply: {e}"
+        session.page.wait_for_selector(content_ready_sel, timeout=20000)
+        session.log("info", "Contenu offre chargé (bouton d'action détecté)")
+    except Exception:
+        # Timeout : attendre encore 5s de plus, le rendu React peut être lent
+        _time.sleep(5)
+        session.log("info", "Timeout contenu offre — tentative bouton après 5s supplémentaires")
+
+    _time.sleep(2)  # laisser React finaliser le rendu des boutons d'action
+
+    # ── Debug : cataloguer TOUS les éléments contenant "Candidature" ─────────
+    try:
+        dom_info = session.page.evaluate("""
+            () => {
+                const result = {buttons: [], candidatureElements: [], frames: window.frames.length};
+                // Tous les boutons du DOM principal
+                const btns = Array.from(document.querySelectorAll('button'));
+                result.buttons = btns.map(b => ({
+                    tag: b.tagName,
+                    text: (b.innerText || b.textContent || '').trim().substring(0, 50),
+                    aria: b.getAttribute('aria-label') || '',
+                    disabled: b.disabled,
+                    classes: b.className.substring(0, 60)
+                }));
+                // Tous les éléments contenant "candidature" (case insensitive)
+                const all = Array.from(document.querySelectorAll('*'));
+                for (const el of all) {
+                    const ownText = Array.from(el.childNodes)
+                        .filter(n => n.nodeType === 3)
+                        .map(n => n.textContent.trim())
+                        .join(' ');
+                    if (ownText.toLowerCase().includes('candidature')) {
+                        result.candidatureElements.push({
+                            tag: el.tagName,
+                            text: ownText.substring(0, 60),
+                            aria: el.getAttribute('aria-label') || '',
+                            role: el.getAttribute('role') || '',
+                            classes: el.className.substring(0, 60)
+                        });
+                    }
+                }
+                return result;
+            }
+        """)
+        btn_list = dom_info.get("buttons", [])
+        cand_list = dom_info.get("candidatureElements", [])
+        frames_count = dom_info.get("frames", 0)
+        session.log("info",
+            f"DOM: {len(btn_list)} boutons, {frames_count} iframes, "
+            f"{len(cand_list)} élément(s) 'candidature'"
+        )
+        for b in btn_list[:20]:
+            session.log("debug", f"  btn: '{b['text']}' aria='{b['aria']}' classes='{b['classes'][:40]}'")
+        for c in cand_list[:5]:
+            session.log("info",
+                f"  candidature-el: <{c['tag']}> text='{c['text']}' "
+                f"aria='{c['aria']}' role='{c['role']}'"
+            )
+    except Exception as dbg_e:
+        session.log("debug", f"DOM debug error: {dbg_e}")
+
+    # ── Chercher le bouton Apply ──────────────────────────────────────────────
+    apply_btn = None
+
+    # Méthode 1 : locator text (Playwright text engine — traverse Shadow DOM)
+    for txt_needle in [
+        "Candidature simplifiée",
+        "Easy Apply",
+        "Postuler facilement",
+        "Candidature",
+        "Postuler",
+        "Apply",
+    ]:
+        try:
+            # filter(has_text=) utilise le moteur de texte Playwright (Shadow DOM aware)
+            candidate = session.page.locator("button").filter(has_text=txt_needle)
+            cnt = candidate.count()
+            if cnt > 0:
+                apply_btn = candidate.first
+                session.log("info", f"Bouton Apply trouvé via filter(has_text='{txt_needle}'): {cnt} résultat(s)")
+                break
+        except Exception:
+            continue
+
+    # Méthode 2 : get_by_text() — trouve n'importe quel élément avec ce texte
+    if apply_btn is None:
+        for txt_needle in ["Candidature simplifiée", "Easy Apply", "Candidature"]:
+            try:
+                candidate = session.page.get_by_text(txt_needle, exact=False)
+                if candidate.count() > 0:
+                    apply_btn = candidate.first
+                    session.log("info", f"Bouton Apply trouvé via get_by_text('{txt_needle}')")
+                    break
+            except Exception:
+                continue
+
+    # Méthode 3 : get_by_role (accessible name matching — Shadow DOM aware)
+    if apply_btn is None:
+        for btn_name in ["Candidature", "Easy Apply", "Postuler facilement", "Postuler", "Apply"]:
+            try:
+                candidate = session.page.get_by_role("button", name=btn_name, exact=False)
+                if candidate.count() > 0:
+                    apply_btn = candidate.first
+                    session.log("info", f"Bouton Apply trouvé via get_by_role: '{btn_name}'")
+                    break
+            except Exception:
+                continue
+
+    # Méthode 4 : JS avec traversal récursif du Shadow DOM + iframes
+    if apply_btn is None:
+        try:
+            found = session.page.evaluate("""
+                () => {
+                    const keywords = ['candidature', 'easy apply', 'postuler facilement'];
+                    function search(root) {
+                        const btns = Array.from(root.querySelectorAll('button, [role="button"]'));
+                        for (const btn of btns) {
+                            const txt = (btn.innerText || btn.textContent || '').toLowerCase().trim();
+                            const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+                            if (keywords.some(k => txt.startsWith(k) || aria.includes(k))) {
+                                if (!btn.disabled && !btn.hasAttribute('disabled')) {
+                                    btn.setAttribute('data-pw-target', 'apply');
+                                    return txt || aria;
+                                }
+                            }
+                        }
+                        for (const el of root.querySelectorAll('*')) {
+                            if (el.shadowRoot) {
+                                const r = search(el.shadowRoot);
+                                if (r) return r;
+                            }
+                        }
+                        return null;
+                    }
+                    return search(document);
+                }
+            """)
+            if found:
+                apply_btn = session.page.locator("[data-pw-target='apply']").first
+                session.log("info", f"Bouton Apply trouvé via JS shadow DOM: '{found}'")
+        except Exception as e:
+            session.log("debug", f"JS shadow search: {e}")
+
+    # Méthode 5 : aria-label CSS fallback
+    if apply_btn is None or not apply_btn.count():
+        apply_btn = session.page.locator(
+            "button.jobs-apply-button, "
+            "button[aria-label*='Apply' i], "
+            "button[aria-label*='Candidature' i], "
+            "button[aria-label*='Postuler' i], "
+            "[data-control-name*='apply' i]"
+        ).first
+
+    # Méthode 6 : chercher dans les iframes (LinkedIn embed)
+    if apply_btn is None or not apply_btn.count():
+        for frame in session.page.frames[1:]:  # skip main frame
+            for txt in ["Candidature", "Easy Apply", "Apply"]:
+                try:
+                    candidate = frame.locator("button").filter(has_text=txt)
+                    if candidate.count() > 0:
+                        apply_btn = candidate.first
+                        session.log("info", f"Bouton Apply trouvé dans iframe: '{txt}'")
+                        break
+                except Exception:
+                    continue
+            if apply_btn is not None and apply_btn.count() > 0:
+                break
+
+    if apply_btn is None or not apply_btn.count():
+        screenshot = session.screenshot(f"noapply_{job.job_id}")
+        return "skipped", f"Bouton Easy Apply non trouvé. Screenshot: {screenshot.name}"
+
+    url_before = session.page.url
+    try:
+        # Essai 1 : click normal
+        apply_btn.click(timeout=8000)
+    except Exception:
+        try:
+            # Essai 2 : JS click (bypass overlay)
+            _js_click(apply_btn)
+        except Exception as e:
+            return "failed", f"Click Apply (JS fallback): {e}"
     session.human_pause()
+
+    # Vérifier si on a été redirigé vers un site externe (apply classique, pas Easy Apply)
+    _time.sleep(2)
+    url_after = session.page.url
+    if "linkedin.com" not in url_after:
+        return "skipped", f"Redirection externe : {url_after[:80]}"
+
     session.check_stop()
 
-    # Boucle "Suivant" -> "Soumettre". On limite a N etapes pour eviter une boucle infinie.
-    MAX_STEPS = 6
+    # Attendre que le modal Easy Apply s'ouvre
+    # LinkedIn 2025 : le modal a role="dialog" et contient un h3 ou h2 "Candidature simplifiée"
+    MODAL_SEL = "[role='dialog'], .jobs-easy-apply-modal, [class*='easy-apply-modal']"
+    try:
+        session.page.wait_for_selector(MODAL_SEL, timeout=8000)
+        session.log("info", "Modal Easy Apply ouvert")
+    except Exception:
+        session.log("info", "Pas de modal détecté — peut-être un formulaire page entière")
+
+    # Screenshot initial du modal pour debug
+    modal_screenshot = session.screenshot(f"modal_{job.job_id}")
+    session.log("info", f"Screenshot modal : {modal_screenshot.name}")
+
+    # Boucle "Suivant" -> "Soumettre". On limite a N etapes pour éviter boucle infinie.
+    MAX_STEPS = 8
+    prev_action = None   # détection de boucle
     for step in range(MAX_STEPS):
         session.check_stop()
-        # Si CV requis et un input file existe, on uploade.
+        _time.sleep(1.5)
+
+        # ── Debug boutons dans le modal ──────────────────────────────────────
+        try:
+            modal_btns = session.page.evaluate("""
+                () => {
+                    const dialog = document.querySelector("[role='dialog']");
+                    const root = dialog || document.body;
+                    return Array.from(root.querySelectorAll('button')).map(b => ({
+                        text: (b.innerText || b.textContent || '').trim().substring(0, 60),
+                        aria: b.getAttribute('aria-label') || '',
+                        disabled: b.disabled
+                    }));
+                }
+            """)
+            session.log("info", f"Step {step} — boutons modal ({len(modal_btns)}) : "
+                        + str([f"'{b['text']}|aria={b['aria']}'" for b in modal_btns[:8]]))
+        except Exception:
+            pass
+
+        # Si CV requis et un input file est visible, on uploade.
         if cv_path:
             try:
                 file_input = session.page.locator("input[type='file']").first
-                if file_input.count() and file_input.is_visible():
+                if file_input.count() and file_input.is_visible(timeout=1000):
                     file_input.set_input_files(cv_path)
                     session.log("info", "CV uploadé")
                     session.human_pause()
             except Exception:
                 pass
 
-        # Lettre : si un textarea "Cover letter" est visible.
+        # Lettre : si un textarea cover letter est visible.
         if letter_text:
             try:
                 ta = session.page.locator(
-                    "textarea[id*='cover' i], textarea[id*='message' i], textarea[id*='motivation' i]"
+                    "textarea[id*='cover' i], textarea[id*='message' i], "
+                    "textarea[id*='motivation' i]"
                 ).first
-                if ta.count() and ta.is_visible():
+                if ta.count() and ta.is_visible(timeout=1000):
                     ta.fill(letter_text[:3500])
                     session.human_pause()
             except Exception:
                 pass
 
-        # Détecte le bouton actif : Submit / Review / Next.
-        submit_btn = session.page.locator(
-            "button[aria-label='Submit application'], "
-            "button[aria-label='Envoyer ma candidature'], "
-            "button[aria-label*='Submit' i]"
-        ).first
-        if submit_btn.count() and submit_btn.is_visible():
+        # Auto-remplir les champs numériques "années d'expérience"
+        # LinkedIn Easy Apply pose souvent des questions du type :
+        # "Depuis combien d'années utilisez-vous X ?"
+        _autofill_experience_fields(session)
+
+        # ── Chercher les boutons de navigation du modal ──────────────────────
+        # LinkedIn 2025 Easy Apply modal : les boutons sont dans [role='dialog']
+        # et leurs labels changent selon la langue et la version.
+        # On utilise filter(has_text) qui est robuste au changement de classes.
+
+        def _find_modal_btn(text_needles: list[str]) -> object:
+            """Cherche un bouton dans le modal par son texte visible."""
+            # Priorité au dialog, fallback sur la page entière
+            for container_sel in ("[role='dialog']", "body"):
+                container = session.page.locator(container_sel)
+                if not container.count():
+                    continue
+                for needle in text_needles:
+                    try:
+                        btn = container.locator("button").filter(has_text=needle)
+                        if btn.count() > 0:
+                            # Prendre le premier non-disabled
+                            for i in range(btn.count()):
+                                b = btn.nth(i)
+                                if not _looks_disabled(b) and b.is_visible(timeout=500):
+                                    return b
+                    except Exception:
+                        continue
+            return None
+
+        # ── Bouton Submit ─────────────────────────────────────────────────────
+        submit_btn = _find_modal_btn([
+            "Envoyer la candidature",
+            "Submit application",
+            "Envoyer ma candidature",
+            "Soumettre",
+            "Submit",
+        ])
+        if submit_btn:
             if not auto_submit:
-                return "skipped", "Soumission désactivée (mode semi-auto)"
+                screenshot = session.screenshot(f"ready_{job.job_id}")
+                session.log("info", f"Mode semi-auto : formulaire prêt. Screenshot: {screenshot.name}")
+                return "skipped", f"Soumission désactivée (mode semi-auto). Screenshot: {screenshot.name}"
             try:
-                submit_btn.click()
-                session.log("info", "Candidature soumise")
+                submit_btn.click(timeout=5000)
+                session.log("info", "Candidature soumise !")
                 session.human_pause()
-                # Ferme modal de confirmation.
                 _dismiss_confirmation(session)
                 return "submitted", f"OK en {step + 1} étape(s)"
             except Exception as e:
                 return "failed", f"Submit failed: {e}"
 
-        next_btn = session.page.locator(
-            "button[aria-label='Continue to next step'], "
-            "button[aria-label='Continuer vers l’étape suivante'], "
-            "button[aria-label*='Next' i], button[aria-label*='Suivant' i], "
-            "button[aria-label*='Review' i], button[aria-label*='Vérifier' i]"
-        ).first
-        if next_btn.count() and next_btn.is_visible() and not _looks_disabled(next_btn):
+        # ── Bouton Réviser / Vérifier / Review (avant Submit) ────────────────
+        review_btn = _find_modal_btn([
+            "Réviser la candidature",
+            "Review your application",
+            "Vérifier",     # FR LinkedIn 2025 : bouton avant soumission finale
+            "Réviser",
+            "Review",
+        ])
+        if review_btn:
+            # Détection de boucle : si on a déjà cliqué "Vérifier" et qu'on le retrouve,
+            # c'est que la validation a échoué (champs requis vides).
+            if prev_action == "review":
+                screenshot = session.screenshot(f"stuck_{job.job_id}")
+                return "skipped", (
+                    f"Validation bloquée à l'étape {step} — champs requis non remplis. "
+                    f"Screenshot: {screenshot.name}"
+                )
             try:
-                next_btn.click()
+                screenshot = session.screenshot(f"review_step{step}_{job.job_id}")
+                session.log("info", f"Bouton Réviser cliqué (étape {step}) — screenshot: {screenshot.name}")
+                review_btn.click(timeout=5000)
+                prev_action = "review"
+                session.human_pause()
+                continue
+            except Exception as e:
+                session.log("debug", f"Review click failed: {e}")
+
+        # ── Bouton Suivant / Next / Continuer ─────────────────────────────────
+        next_btn = _find_modal_btn([
+            "Suivant",
+            "Continuer",
+            "Next",
+            "Continue",
+        ])
+        if next_btn:
+            try:
+                next_btn.click(timeout=5000)
+                session.log("info", f"Bouton Suivant cliqué (étape {step})")
+                prev_action = "next"
+                session.human_pause()
+                continue
             except Exception as e:
                 return "failed", f"Next click failed: {e}"
-            session.human_pause()
-            continue
 
-        # Ni Submit ni Next exploitable -> questions custom non remplies.
+        # Ni Submit ni Next exploitable → screenshot + abandon
         screenshot = session.screenshot(f"skipped_{job.job_id}")
-        return "skipped", f"Étape bloquée (questions custom). Screenshot: {screenshot.name}"
+        return "skipped", f"Etape {step} bloquée (pas de bouton Suivant/Submit). Screenshot: {screenshot.name}"
 
-    return "skipped", f"Plus de {MAX_STEPS} étapes — abandon (formulaire long)"
+    return "skipped", f"Plus de {MAX_STEPS} étapes — abandon (formulaire trop long)"
 
 
 def _looks_disabled(locator) -> bool:
@@ -324,6 +733,135 @@ def _looks_disabled(locator) -> bool:
                locator.is_disabled()
     except Exception:
         return False
+
+
+# Table d'auto-réponse pour les questions numériques LinkedIn Easy Apply.
+# Clé : substring (lowercase) de la question  → réponse (string)
+_AUTOFILL_TABLE: dict[str, str] = {
+    "sql":              "3",
+    "python":           "3",
+    "java":             "2",
+    "javascript":       "1",
+    "r (langage":       "2",
+    "machine learning": "3",
+    "apprentissage auto": "3",
+    "data":             "3",
+    "excel":            "4",
+    "power bi":         "2",
+    "tableau":          "2",
+    "spark":            "2",
+    "hadoop":           "1",
+    "azure":            "2",
+    "aws":              "1",
+    "docker":           "2",
+    "git":              "4",
+    "agile":            "3",
+    "scrum":            "3",
+    "marketing":        "0",   # hors profil → 0 = aucune expérience
+    "commercial":       "0",
+    "vente":            "0",
+    "gestion de projet": "2",
+    "management":       "1",
+}
+
+# Mots-clés indiquant une question sur les années d'expérience
+_YEARS_KEYWORDS = [
+    "combien d'années", "combien d'annees", "years of experience",
+    "années d'expérience", "annees d'experience", "how many years",
+    "depuis combien",
+]
+
+
+def _autofill_experience_fields(session: BrowserSession) -> int:
+    """Remplit automatiquement les champs numériques du modal Easy Apply.
+
+    Cible les questions du type "Depuis combien d'années utilisez-vous X ?".
+    Retourne le nombre de champs remplis.
+    """
+    import time as _t
+    filled = 0
+    try:
+        # Chercher tous les inputs text/number visibles dans le modal ou la page
+        fields_info = session.page.evaluate("""
+            () => {
+                // LinkedIn Easy Apply modal est un overlay fixed — offsetParent est null.
+                // On cherche donc dans tout le body sans filtre offsetParent.
+                const results = [];
+                const inputs = Array.from(document.querySelectorAll(
+                    'input[type="text"], input[type="number"], input:not([type])'
+                ));
+                for (const inp of inputs) {
+                    // Vérifier la visibilité par getComputedStyle (fonctionne pour fixed)
+                    const style = window.getComputedStyle(inp);
+                    if (style.display === 'none' || style.visibility === 'hidden') continue;
+                    if (inp.value && inp.value.trim()) continue;  // déjà rempli
+                    // Trouver le label associé
+                    let labelText = '';
+                    const id = inp.id;
+                    if (id) {
+                        const lbl = document.querySelector('label[for="' + id + '"]');
+                        if (lbl) labelText = lbl.innerText || lbl.textContent || '';
+                    }
+                    if (!labelText) {
+                        // Chercher dans les parents (jusqu'à 5 niveaux)
+                        let el = inp.parentElement;
+                        for (let i = 0; i < 5; i++) {
+                            if (!el) break;
+                            const lbl = el.querySelector('label');
+                            if (lbl) { labelText = lbl.innerText || lbl.textContent || ''; break; }
+                            // Aussi chercher un span/div avec le texte de question
+                            const spans = el.querySelectorAll('span, div, p');
+                            for (const s of spans) {
+                                const txt = (s.innerText || '').trim();
+                                if (txt.length > 5 && txt.length < 200) {
+                                    labelText = txt;
+                                    break;
+                                }
+                            }
+                            if (labelText) break;
+                            el = el.parentElement;
+                        }
+                    }
+                    results.push({
+                        id: inp.id || '',
+                        name: inp.name || '',
+                        placeholder: inp.placeholder || '',
+                        labelText: labelText.trim().toLowerCase()
+                    });
+                }
+                return results;
+            }
+        """)
+        for field in fields_info:
+            label = field.get("labelText", "").lower()
+            field_id = field.get("id", "")
+            # Vérifier si c'est une question d'années d'expérience
+            if not any(kw in label for kw in _YEARS_KEYWORDS):
+                continue
+            # Trouver la technologie mentionnée
+            answer = "2"  # valeur par défaut
+            for tech, val in _AUTOFILL_TABLE.items():
+                if tech in label:
+                    answer = val
+                    break
+            # Remplir le champ
+            try:
+                if field_id:
+                    inp = session.page.locator(f"#{field_id}").first
+                else:
+                    inp = session.page.locator(
+                        f"input[name='{field.get('name', '')}']"
+                    ).first
+                if inp.count() and inp.is_visible(timeout=500):
+                    inp.fill(answer)
+                    session.log("info", f"Auto-fill: '{label[:50]}' → {answer}")
+                    filled += 1
+                    _t.sleep(0.2)
+            except Exception as e:
+                session.log("debug", f"Auto-fill error ({label[:30]}): {e}")
+    except Exception as e:
+        session.log("debug", f"_autofill_experience_fields: {e}")
+    return filled
 
 
 def _dismiss_confirmation(session: BrowserSession) -> None:

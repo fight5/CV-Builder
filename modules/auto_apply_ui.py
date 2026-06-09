@@ -159,10 +159,10 @@ def render() -> None:
 
     r1, r2, r3 = st.columns([3, 3, 1])
     with r1:
-        keywords = st.text_input("Mots-clés de recherche", value="data scientist", key="auto_keywords",
-                                 placeholder="Ex : data scientist, AI engineer…")
+        keywords = st.text_input("Mots-clés de recherche", value="assistant comptable", key="auto_keywords",
+                                 placeholder="Ex : assistant comptable, comptable, data scientist…")
     with r2:
-        location = st.text_input("Localisation", value="Paris", key="auto_location",
+        location = st.text_input("Localisation", value="France", key="auto_location",
                                  placeholder="Ex : Paris, France, Remote…")
     with r3:
         max_apps = st.number_input("Nb max", min_value=1, max_value=50, value=5, key="auto_max_apps")
@@ -183,13 +183,28 @@ def render() -> None:
 
     # ── 3. Plateforme ─────────────────────────────────────────────────────────
     st.subheader("3. Plateforme")
+    from modules.browser_manager import PERSISTENT_PROFILES_DIR
+
     plat_cols = st.columns(len(config.PLATFORMS))
     for col, (key, spec) in zip(plat_cols, config.PLATFORMS.items()):
         with col:
             cookies_path = config.COOKIES_DIR / f"{key}.json"
-            connected = cookies_path.exists()
-            badge = "✅ Connecté" if connected else "⚪ Non connecté"
-            badge_color = "#28a745" if connected else "#888"
+            persistent_dir = PERSISTENT_PROFILES_DIR / key
+            # Connexion = profil persistant Playwright OU cookies JSON non-vide
+            has_persistent = persistent_dir.exists() and any(persistent_dir.iterdir())
+            has_json = cookies_path.exists()
+            connected = has_persistent or has_json
+
+            if has_persistent:
+                badge = "✅ Connecté (profil Playwright)"
+                badge_color = "#28a745"
+            elif has_json:
+                badge = "🟡 Session JSON (profil absent)"
+                badge_color = "#ffc107"
+            else:
+                badge = "⚪ Non connecté"
+                badge_color = "#888"
+
             st.markdown(
                 f"**{spec.label}**<br>"
                 f"<span style='color:{badge_color};font-size:0.85rem'>{badge}</span>",
@@ -199,31 +214,39 @@ def render() -> None:
                 st.button("À venir", key=f"btn_soon_{key}", disabled=True, use_container_width=True)
                 continue
 
-            if st.button(
-                "Se connecter" if not connected else "Re-connecter",
-                key=f"btn_login_{key}",
-                disabled=_proc_alive(st.session_state.runner_proc),
-                use_container_width=True,
-            ):
-                _open_in_chrome(spec.base_url)
-                st.session_state[f"login_pending_{key}"] = True
-                st.rerun()
-
-            # Instruction + confirmation après clic "Se connecter"
-            if st.session_state.get(f"login_pending_{key}"):
-                st.info(
-                    f"🌐 **{spec.label}** s'ouvre dans votre Chrome habituel.\n\n"
-                    "Connectez-vous, puis revenez ici et cliquez **✅ Confirmer**."
-                )
-                if st.button("✅ Confirmer la connexion", key=f"btn_confirm_{key}",
-                             use_container_width=True):
-                    _create_session_marker(key)
-                    st.session_state[f"login_pending_{key}"] = False
-                    st.success(
-                        f"Session {spec.label} enregistrée. "
-                        "Au premier lancement, une fenêtre Chrome s'ouvrira pour finaliser si nécessaire."
+            if has_persistent:
+                # Le profil persistant est géré via setup_linkedin_login.py
+                st.caption("🔒 Profil Playwright actif — connexion stable.")
+                with st.expander("Reconnecter ?"):
+                    st.markdown(
+                        "Pour changer de compte, lancez dans votre terminal Windows :\n"
+                        "```\npython setup_linkedin_login.py\n```\n"
+                        "Connectez-vous dans la fenêtre qui s'ouvre."
                     )
+            else:
+                if st.button(
+                    "Se connecter" if not connected else "Re-connecter",
+                    key=f"btn_login_{key}",
+                    disabled=_proc_alive(st.session_state.runner_proc),
+                    use_container_width=True,
+                ):
+                    st.session_state[f"login_pending_{key}"] = True
                     st.rerun()
+
+                # Instruction + confirmation après clic "Se connecter"
+                if st.session_state.get(f"login_pending_{key}"):
+                    st.warning(
+                        "⚠️ Pour LinkedIn, la connexion via profil Playwright persistant "
+                        "est recommandée pour éviter la détection bot.\n\n"
+                        "Lancez dans votre terminal :\n"
+                        "```\npython setup_linkedin_login.py\n```"
+                    )
+                    if st.button("✅ Confirmer connexion JSON", key=f"btn_confirm_{key}",
+                                 use_container_width=True):
+                        _create_session_marker(key)
+                        st.session_state[f"login_pending_{key}"] = False
+                        st.success(f"Session {spec.label} marquée.")
+                        st.rerun()
 
     impl_keys = [k for k, s in config.PLATFORMS.items() if s.implemented]
     selected_platform = st.selectbox(

@@ -60,6 +60,10 @@ class CVPreferences:
     photo_path: Optional[str] = None
     aggressive: bool = True            # le candidat assume les ajouts
     company: str = ""                  # entreprise (pour nommage + lettre)
+    generate_letter: bool = False      # générer la lettre de motivation
+    # Fichiers extra uploadés par l'utilisateur : {nom_cible.ext: chemin_source}
+    # Copiés dans outputs/ avant compilation (logos, photo supplémentaire…)
+    extra_assets: dict = field(default_factory=dict)
 
 
 # ── Extraction texte ─────────────────────────────────────────────────────────
@@ -327,51 +331,79 @@ def _paragraphs_to_latex(body: str) -> str:
 
 # ── Assets (logos, photo) ────────────────────────────────────────────────────
 
-def _copy_assets(output_dir: Path) -> None:
+def _copy_assets(output_dir: Path, extra_assets: Optional[dict] = None) -> None:
     """Copie tous les fichiers image de templates/assets/ vers output_dir.
 
     Appelé avant chaque compilation pdflatex pour que les \\includegraphics
     et \\safeimage puissent trouver les fichiers.
+    Copie aussi les extra_assets uploadés par l'utilisateur : {nom_cible: chemin_source}.
     """
-    if not ASSETS_DIR.exists():
-        return
     output_dir.mkdir(parents=True, exist_ok=True)
-    for f in ASSETS_DIR.iterdir():
-        if f.suffix.lower() in {".png", ".jpg", ".jpeg", ".eps", ".pdf"}:
-            dest = output_dir / f.name
-            try:
-                shutil.copyfile(f, dest)
-            except OSError as e:
-                logger.debug("Asset copy skipped (%s): %s", f.name, e)
+    if ASSETS_DIR.exists():
+        for f in ASSETS_DIR.iterdir():
+            if f.suffix.lower() in {".png", ".jpg", ".jpeg", ".eps", ".pdf"}:
+                dest = output_dir / f.name
+                try:
+                    shutil.copyfile(f, dest)
+                except OSError as e:
+                    logger.debug("Asset copy skipped (%s): %s", f.name, e)
+    # Fichiers uploadés par l'utilisateur (logos d'entreprise, photo…)
+    if extra_assets:
+        for target_name, src_path in extra_assets.items():
+            if src_path and Path(src_path).exists():
+                dest = output_dir / target_name
+                try:
+                    shutil.copyfile(src_path, dest)
+                    logger.debug("Extra asset copié : %s → %s", src_path, dest)
+                except OSError as e:
+                    logger.debug("Extra asset non copié (%s): %s", target_name, e)
 
 
-def _find_logo(name: str) -> Optional[str]:
-    """Cherche dans templates/assets/ un logo correspondant au nom donné.
+def _find_logo(name: str, extra_filenames: Optional[dict] = None) -> Optional[str]:
+    """Cherche un logo correspondant au nom donné.
 
+    Cherche d'abord dans les extra_filenames (uploadés par l'utilisateur),
+    puis dans templates/assets/.
     Retourne le nom de fichier (pas le chemin complet) ou None.
     Exemples : "Thales Alenia Space" → "Thales.png",
                "Sanofi" → "Sanofi.png",
                "EPF Montpellier" → "EPF.png".
     """
-    if not ASSETS_DIR.exists() or not name:
+    if not name:
         return None
     name_lower = name.lower()
+
+    def _score(stem: str) -> int:
+        stem = stem.lower()
+        if stem in name_lower or name_lower in stem:
+            return len(stem)
+        parts = [p for p in stem.split() if len(p) > 2]
+        matching = [p for p in parts if p in name_lower]
+        return max((len(p) for p in matching), default=0)
+
     best: Optional[str] = None
     best_score = 0
-    for f in ASSETS_DIR.iterdir():
-        if f.suffix.lower() not in {".png", ".jpg", ".jpeg"}:
-            continue
-        stem = f.stem.lower()
-        # Score = longueur du stem si le stem apparaît dans le nom (ou vice versa)
-        if stem in name_lower or name_lower in stem:
-            score = len(stem)
-        elif any(part in name_lower for part in stem.split() if len(part) > 2):
-            score = max(len(p) for p in stem.split() if p in name_lower)
-        else:
-            continue
-        if score > best_score:
-            best = f.name
-            best_score = score
+
+    # 1. Chercher dans les fichiers uploadés par l'utilisateur
+    if extra_filenames:
+        for fname in extra_filenames:
+            if Path(fname).suffix.lower() not in {".png", ".jpg", ".jpeg"}:
+                continue
+            s = _score(Path(fname).stem)
+            if s > best_score:
+                best = fname
+                best_score = s
+
+    # 2. Chercher dans templates/assets/
+    if ASSETS_DIR.exists():
+        for f in ASSETS_DIR.iterdir():
+            if f.suffix.lower() not in {".png", ".jpg", ".jpeg"}:
+                continue
+            s = _score(f.stem)
+            if s > best_score:
+                best = f.name
+                best_score = s
+
     return best
 
 
@@ -515,8 +547,8 @@ def _build_experiences_block(experiences: list[dict], is_optimum: bool) -> str:
         bullets = exp.get("bullets", [])
         rows = "\n".join(f"\\item {_latex_escape(str(b))}" for b in bullets)
 
-        # Logo de l'entreprise (depuis templates/assets/, facultatif)
-        logo = _find_logo(company_raw)
+        # Logo de l'entreprise (depuis templates/assets/ ou extra_assets)
+        logo = _find_logo(company_raw, extra_filenames=prefs.extra_assets)
         logo_tex = f"\\safeimage{{{logo}}}{{0.20\\textwidth}}" if logo else ""
 
         if is_optimum:
@@ -547,8 +579,8 @@ def _build_education_block(education: list[dict]) -> str:
         school = _latex_escape(school_raw)
         dates  = _latex_escape(edu.get("dates", ""))
 
-        # Logo de l'école (depuis templates/assets/, facultatif)
-        logo = _find_logo(school_raw)
+        # Logo de l'école (depuis templates/assets/ ou extra_assets)
+        logo = _find_logo(school_raw, extra_filenames=prefs.extra_assets)
         logo_tex = f"\\safeimage{{{logo}}}{{0.10\\textwidth}}" if logo else ""
 
         lines.append(
@@ -832,46 +864,116 @@ def _build_letter_latex(
 
 
 # ── Compilation PDF ──────────────────────────────────────────────────────────
-def _compile_latex(latex_src: str, base_name: str) -> tuple[Optional[bytes], list[str]]:
+def _tighten_latex_for_one_page(latex_src: str) -> str:
+    """Réduit marges + taille de police pour forcer 1 page."""
+    # Réduire la taille de police (9.5pt → 9pt)
+    patched = re.sub(
+        r'(\\documentclass\[)[\d.]+pt',
+        r'\g<1>9pt',
+        latex_src,
+    )
+    # Réduire les marges (geometry)
+    patched = re.sub(
+        r'\\usepackage\[margin=[^\]]+\]\{geometry\}',
+        r'\\usepackage[margin=0.9cm,top=0.65cm,bottom=0.65cm]{geometry}',
+        patched,
+    )
+    # Réduire l'espacement vertical entre sections
+    patched = patched.replace(
+        r'\vspace{0.6em}', r'\vspace{0.2em}'
+    ).replace(
+        r'\vspace{0.4em}', r'\vspace{0.1em}'
+    )
+    return patched
+
+
+def _count_pdf_pages(pdf_path: Path) -> int:
+    """Retourne le nombre de pages du PDF via PyMuPDF."""
+    try:
+        import fitz
+        doc = fitz.open(str(pdf_path))
+        n = len(doc)
+        doc.close()
+        return n
+    except Exception:
+        return 1  # en cas d'erreur, on suppose 1 page
+
+
+def _compile_latex(
+    latex_src: str,
+    base_name: str,
+    extra_assets: Optional[dict] = None,
+    enforce_one_page: bool = True,
+) -> tuple[Optional[bytes], list[str]]:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     safe = re.sub(r"[^A-Za-z0-9_\-]+", "_", base_name) or "document"
     tex_path = OUTPUT_DIR / f"{safe}.tex"
     pdf_path = OUTPUT_DIR / f"{safe}.pdf"
-    tex_path.write_text(latex_src, encoding="utf-8")
 
     # Copier les assets (logos, photo) dans outputs/ pour que pdflatex les trouve
-    _copy_assets(OUTPUT_DIR)
+    _copy_assets(OUTPUT_DIR, extra_assets)
 
     errors: list[str] = []
     if shutil.which("pdflatex") is None:
         return None, ["pdflatex introuvable, installez TeX Live ou MiKTeX."]
 
-    cmd = [
-        "pdflatex",
-        "-interaction=nonstopmode",
-        "-output-directory", str(OUTPUT_DIR),
-        str(tex_path),
-    ]
-    for run in (1, 2):
-        try:
-            res = subprocess.run(
-                cmd, capture_output=True, timeout=300, cwd=str(OUTPUT_DIR)
-            )
-        except subprocess.TimeoutExpired:
-            return None, ["pdflatex timeout (300s)"]
-        except Exception as e:
-            return None, [f"pdflatex erreur : {e}"]
-        raw = res.stdout or b""
-        if isinstance(raw, bytes):
-            stdout = raw.decode("utf-8", errors="replace")
-            if "�" in stdout:
-                stdout = raw.decode("cp1252", errors="replace")
-        else:
-            stdout = raw
-        if res.returncode != 0 and run == 2 and not pdf_path.exists():
-            tail = "\n".join(stdout.splitlines()[-30:])
-            errors.append(f"pdflatex exit={res.returncode}.\n{tail}")
-            return None, errors
+    def _run_pdflatex(src: str) -> tuple[bool, str]:
+        tex_path.write_text(src, encoding="utf-8")
+        cmd = [
+            "pdflatex",
+            "-interaction=nonstopmode",
+            "-output-directory", str(OUTPUT_DIR),
+            str(tex_path),
+        ]
+        for run in (1, 2):
+            try:
+                res = subprocess.run(
+                    cmd, capture_output=True, timeout=300, cwd=str(OUTPUT_DIR)
+                )
+            except subprocess.TimeoutExpired:
+                return False, "pdflatex timeout (300s)"
+            except Exception as e:
+                return False, f"pdflatex erreur : {e}"
+            raw = res.stdout or b""
+            if isinstance(raw, bytes):
+                stdout = raw.decode("utf-8", errors="replace")
+                if "â€" in stdout or "â" in stdout:
+                    stdout = raw.decode("cp1252", errors="replace")
+            else:
+                stdout = raw
+            if res.returncode != 0 and run == 2 and not pdf_path.exists():
+                tail = "\n".join(stdout.splitlines()[-30:])
+                return False, f"pdflatex exit={res.returncode}.\n{tail}"
+        return True, ""
+
+    # Passe 1 — compilation normale
+    ok, err = _run_pdflatex(latex_src)
+    if not ok:
+        errors.append(err)
+        return None, errors
+    if not pdf_path.exists():
+        return None, errors or ["PDF non produit."]
+
+    # Passe 2 — si > 1 page, on resserre marges + police et on recompile
+    if enforce_one_page:
+        pages = _count_pdf_pages(pdf_path)
+        if pages > 1:
+            logger.info("CV dépasse 1 page (%d pages) — resserrement et recompilation.", pages)
+            tighter = _tighten_latex_for_one_page(latex_src)
+            ok2, err2 = _run_pdflatex(tighter)
+            if ok2 and pdf_path.exists():
+                pages2 = _count_pdf_pages(pdf_path)
+                if pages2 > 1:
+                    logger.warning("CV toujours %d pages après resserrement — on conserve.", pages2)
+                    errors.append(
+                        f"⚠ CV généré en {pages2} pages (objectif 1 page). "
+                        "Réduisez le contenu ou la taille de police."
+                    )
+            else:
+                # Recompilation resserrée a échoué — on garde le PDF original
+                logger.warning("Recompilation resserrée échouée (%s) — PDF original conservé.", err2)
+                # Relancer la version normale pour retrouver le PDF
+                _run_pdflatex(latex_src)
 
     if not pdf_path.exists():
         return None, errors or ["PDF non produit."]
@@ -944,22 +1046,27 @@ def run_optimum_pipeline(
     out["cv_filename"] = f"{cv_base}.pdf"
     out["letter_filename"] = f"{lm_base}.pdf"
 
-    cv_bytes, cv_errors = _compile_latex(cv_latex, cv_base)
+    cv_bytes, cv_errors = _compile_latex(
+        cv_latex, cv_base,
+        extra_assets=prefs.extra_assets,
+        enforce_one_page=True,
+    )
     out["cv_pdf_bytes"] = cv_bytes
     out["cv_errors"] = cv_errors
 
-    # 2. Lettre
-    body = generate_cover_letter(job_offer, cv_latex, prefs)
-    out["letter_body"] = body
-    letter_latex = _build_letter_latex(
-        body, prefs,
-        sender_name=candidate,
-        job_title=job_title,
-        company=company,
-    )
-    out["letter_latex"] = letter_latex
-    lm_bytes, lm_errors = _compile_latex(letter_latex, lm_base)
-    out["letter_pdf_bytes"] = lm_bytes
-    out["letter_errors"] = lm_errors
+    # 2. Lettre — seulement si demandée
+    if prefs.generate_letter:
+        body = generate_cover_letter(job_offer, cv_latex, prefs)
+        out["letter_body"] = body
+        letter_latex = _build_letter_latex(
+            body, prefs,
+            sender_name=candidate,
+            job_title=job_title,
+            company=company,
+        )
+        out["letter_latex"] = letter_latex
+        lm_bytes, lm_errors = _compile_latex(letter_latex, lm_base, enforce_one_page=False)
+        out["letter_pdf_bytes"] = lm_bytes
+        out["letter_errors"] = lm_errors
 
     return out

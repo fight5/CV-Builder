@@ -103,8 +103,9 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 HUMAN_DELAY_MS_MIN = 600
 HUMAN_DELAY_MS_MAX = 1800
 
-# Timeout par défaut sur les attentes Playwright.
-DEFAULT_TIMEOUT_MS = 15000
+# Timeout par défaut sur les attentes Playwright (sélecteurs, clics...).
+# Les page.goto ont leur propre timeout (60s) défini dans linkedin_apply.py.
+DEFAULT_TIMEOUT_MS = 30000
 
 # Mode headless par défaut. La 1re connexion par plateforme passe TOUJOURS
 # en headed (l'utilisateur doit se connecter manuellement).
