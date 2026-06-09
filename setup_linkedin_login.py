@@ -35,6 +35,14 @@ LOGIN_URL = "https://www.linkedin.com/login"
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Setup connexion LinkedIn Playwright")
+    parser.add_argument(
+        "--switch", action="store_true",
+        help="Forcer le changement de compte (déconnecte le compte actuel et ouvre la page de login)",
+    )
+    args = parser.parse_args()
+
     file_manager.ensure_directories()
 
     profile_dir = PERSISTENT_PROFILES_DIR / "linkedin"
@@ -43,6 +51,13 @@ def main():
     print("=" * 60)
     print(f"\nProfil persistant : {profile_dir}")
 
+    # Si --switch : supprimer l'ancien profil pour forcer une vraie reconnexion
+    if args.switch and profile_dir.exists():
+        import shutil
+        print("\n[...] Suppression de l'ancien profil (--switch)...")
+        shutil.rmtree(profile_dir, ignore_errors=True)
+        print(f"[OK] Ancien profil supprimé : {profile_dir}")
+
     def logger(level, msg):
         print(f"  [{level.upper():<7}] {msg}")
 
@@ -50,15 +65,22 @@ def main():
 
     with BrowserSession("linkedin", headless=False, event_logger=logger) as session:
 
-        # Vérifier si déjà connecté
-        already_connected = session._is_linkedin_logged_in()
-        if already_connected:
-            print("\n[OK] Déjà connecté ! (cookie li_at présent)")
-            print("     Pas besoin de se reconnecter.")
-            _show_profile(session)
-            return
+        # Vérifier si déjà connecté (seulement si pas --switch)
+        if not args.switch:
+            already_connected = session._is_linkedin_logged_in()
+            if already_connected:
+                print("\n[OK] Déjà connecté ! (cookie li_at présent)")
+                print("     Pour changer de compte, relancez avec : python setup_linkedin_login.py --switch")
+                _show_profile(session)
+                return
 
-        # Naviguer vers login
+        # Naviguer vers login (avec déconnexion si --switch)
+        if args.switch:
+            print(f"\n[...] Déconnexion du compte actuel...")
+            try:
+                session.page.goto("https://www.linkedin.com/m/logout/", wait_until="domcontentloaded", timeout=10000)
+            except Exception:
+                pass
         print(f"\n[...] Navigation vers {LOGIN_URL}...")
         session.page.goto(LOGIN_URL, wait_until="domcontentloaded")
         time.sleep(1)

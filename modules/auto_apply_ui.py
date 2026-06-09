@@ -60,9 +60,10 @@ def _create_session_marker(platform: str) -> None:
         path.write_text('{"cookies":[],"origins":[]}', encoding="utf-8")
 
 
-def _launch_setup_script(platform: str) -> bool:
-    """Lance setup_linkedin_login.py (ou équivalent) dans un nouveau terminal.
+def _launch_setup_script(platform: str, switch: bool = False) -> bool:
+    """Lance setup_linkedin_login.py dans un nouveau terminal.
 
+    switch=True  → passe --switch pour déconnecter l'ancien compte et ouvrir login.
     Retourne True si le lancement a réussi, False sinon.
     Fonctionne uniquement en local (pas sur Streamlit Cloud).
     """
@@ -74,20 +75,21 @@ def _launch_setup_script(platform: str) -> bool:
         return False
 
     cwd = str(script.parent)
+    extra = " --switch" if switch else ""
     try:
         if os.name == "nt":
             # Windows : nouvelle fenêtre cmd qui reste ouverte
             subprocess.Popen(
-                f'start cmd /k "{sys.executable}" "{script}"',
+                f'start cmd /k "{sys.executable}" "{script}"{extra}',
                 shell=True,
                 cwd=cwd,
             )
         else:
             # Linux/Mac : nouveau terminal
-            for term in ("gnome-terminal --", "xterm -e", "osascript -e 'tell application \"Terminal\" to do script"):
+            for term in ("gnome-terminal --", "xterm -e"):
                 try:
                     subprocess.Popen(
-                        f'{term} "{sys.executable}" "{script}"',
+                        f'{term} "{sys.executable}" "{script}"{extra}',
                         shell=True,
                         cwd=cwd,
                     )
@@ -267,9 +269,9 @@ def render() -> None:
                     "🔄 Changer de compte",
                     key=f"btn_switch_{key}",
                     use_container_width=True,
-                    help="Lance setup_linkedin_login.py dans un nouveau terminal.",
+                    help="Déconnecte le compte actuel et ouvre la page de login LinkedIn.",
                 ):
-                    launched = _launch_setup_script(key)
+                    launched = _launch_setup_script(key, switch=True)
                     if launched:
                         st.session_state[f"login_launching_{key}"] = True
                         st.info(
