@@ -994,12 +994,14 @@ def _tighten_latex_for_one_page(latex_src: str, level: int = 1) -> str:
 
     # Réduire la taille de police
     patched = re.sub(r'(\\documentclass\[)[\d.]+pt', r'\g<1>' + font, latex_src)
-    # Réduire les marges (geometry)
-    patched = re.sub(r'\\usepackage\[[^\]]*\]\{geometry\}', margin, patched)
+    # Réduire les marges (geometry) — lambda évite les escapes regex dans la repl
+    _margin = margin
+    patched = re.sub(r'\\usepackage\[[^\]]*\]\{geometry\}', lambda m: _margin, patched)
     # Mettre à jour la largeur du bandeau
+    _sidebar_w = sidebar_w
     patched = re.sub(
         r'\\setlength\{\\sidebarw\}\{[^}]+\}',
-        sidebar_w,
+        lambda m: _sidebar_w,
         patched,
     )
     # Réduire les espacements
