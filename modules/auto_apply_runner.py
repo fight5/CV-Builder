@@ -43,6 +43,39 @@ PLATFORM_MODULES = {
     "jobteaser": "modules.jobteaser_apply",
 }
 
+# Sélecteurs pour scraper la description d'une offre LinkedIn
+_LINKEDIN_DESC_SELECTORS = [
+    ".jobs-description__content",
+    "#job-details",
+    ".jobs-description-content__text",
+    ".show-more-less-html__markup",
+    ".description__text",
+]
+
+
+def _scrape_job_description(session: "BrowserSession", job_url: str, logger) -> str:
+    """Navigue vers la page de l'offre et extrait son texte complet.
+
+    Retourne une chaîne vide si la description n'a pas pu être extraite.
+    Ne lève pas d'exception — les erreurs sont loguées en debug.
+    """
+    try:
+        session.page.goto(job_url, wait_until="domcontentloaded", timeout=20_000)
+        session.page.wait_for_timeout(1_500)          # laisser le JS rendre le contenu
+        for sel in _LINKEDIN_DESC_SELECTORS:
+            try:
+                el = session.page.locator(sel).first
+                if el.count() > 0:
+                    text = el.inner_text(timeout=4_000).strip()
+                    if len(text) > 150:                # description non-vide
+                        logger("debug", f"Description scrappée ({len(text)} chars) via {sel}")
+                        return text
+            except Exception:
+                continue
+    except Exception as e:
+        logger("debug", f"Scrape description échoué ({job_url}): {e}")
+    return ""
+
 
 def _write_state(state: dict) -> None:
     file_manager.write_json(config.RUN_STATE_JSON, state)
@@ -215,11 +248,25 @@ def main() -> int:
                 if cv_source_text:
                     try:
                         event_logger("info", f"Génération CV pour : {job.title} @ {job.company}")
-                        # On combine l'offre (title+company+url) avec le job_target comme contexte
-                        job_description = (
-                            f"{job.title} chez {job.company}\n\n"
-                            f"Poste ciblé : {job_target_text}"
-                        )
+
+                        # ── Scraper la vraie description de l'offre ──────────
+                        raw_desc = _scrape_job_description(session, job.url, event_logger)
+                        if raw_desc:
+                            event_logger("info", f"Description offre scrappée ({len(raw_desc)} chars)")
+                            job_description = (
+                                f"Poste : {job.title}\n"
+                                f"Entreprise : {job.company}\n\n"
+                                f"{raw_desc}"
+                            )
+                        else:
+                            # Fallback : titre + contexte générique de l'utilisateur
+                            event_logger("warning", "Description offre non scrappée — fallback générique")
+                            job_description = (
+                                f"Poste : {job.title}\n"
+                                f"Entreprise : {job.company}\n\n"
+                                f"Profil ciblé : {job_target_text}"
+                            )
+
                         result = run_optimum_pipeline(job_description, cv_source_text, cv_prefs)
                         cv_bytes = result.get("cv_pdf_bytes")
                         lm_bytes = result.get("letter_pdf_bytes")
