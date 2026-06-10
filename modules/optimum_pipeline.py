@@ -953,6 +953,7 @@ def _tighten_latex_for_one_page(latex_src: str, level: int = 1) -> str:
         margin = r"\usepackage[margin=1.0cm,top=0.8cm,bottom=0.7cm]{geometry}"
         linespread = r"\linespread{0.92}\selectfont"
         sidebar_w = r"\setlength{\sidebarw}{0.403\paperwidth}"
+        box_height = r"\begin{minipage}[t][21cm][t]"
         enlarge = r"\enlargethispage*{2\baselineskip}"
         vspace_map = [
             (r'\vspace{0.8em}',   r'\vspace{0.4em}'),
@@ -973,6 +974,7 @@ def _tighten_latex_for_one_page(latex_src: str, level: int = 1) -> str:
         margin = r"\usepackage[margin=0.75cm,top=0.55cm,bottom=0.55cm]{geometry}"
         linespread = r"\linespread{0.88}\selectfont"
         sidebar_w = r"\setlength{\sidebarw}{0.400\paperwidth}"
+        box_height = r"\begin{minipage}[t][22cm][t]"
         enlarge = r"\enlargethispage*{4\baselineskip}"
         vspace_map = [
             (r'\vspace{0.8em}',   r'\vspace{0.05em}'),
@@ -997,11 +999,18 @@ def _tighten_latex_for_one_page(latex_src: str, level: int = 1) -> str:
     # Réduire les marges (geometry) — lambda évite les escapes regex dans la repl
     _margin = margin
     patched = re.sub(r'\\usepackage\[[^\]]*\]\{geometry\}', lambda m: _margin, patched)
-    # Mettre à jour la largeur du bandeau
+    # Mettre à jour la largeur du bandeau (tikz — ignoré si absent)
     _sidebar_w = sidebar_w
     patched = re.sub(
         r'\\setlength\{\\sidebarw\}\{[^}]+\}',
         lambda m: _sidebar_w,
+        patched,
+    )
+    # Ajuster la hauteur du minipage bandeau (colorbox approach)
+    _box_h = box_height
+    patched = re.sub(
+        r'\\begin\{minipage\}\[t\]\[[\d.]+cm\]\[t\]',
+        lambda m: _box_h,
         patched,
     )
     # Réduire les espacements

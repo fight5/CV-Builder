@@ -1,4 +1,4 @@
-% Template "OPTIMUM" — design utilisateur, paramétrable.
+% Template "OPTIMUM" — structure identique à newcvlatex.tex
 % Placeholders dynamiques injectés par modules/optimum_pipeline.py.
 
 \documentclass[9.5pt,a4paper]{article}
@@ -14,8 +14,6 @@
 \usepackage[hidelinks]{hyperref}
 \usepackage{parskip}
 \usepackage{amssymb}
-\usepackage{tikz}
-\usetikzlibrary{calc}
 
 \definecolor{accent}{RGB}{ {{ACCENT_RGB}} }
 \definecolor{text}{RGB}{40,40,40}
@@ -24,10 +22,6 @@
 \sectionfont{\color{accent}\sffamily\large\bfseries}
 \setlist[itemize]{noitemsep, topsep=0pt, leftmargin=*}
 
-% Largeur du bandeau gauche (mis à jour par le pipeline si resserrement)
-\newlength{\sidebarw}
-\setlength{\sidebarw}{0.405\paperwidth}
-
 \newcommand{\safeimage}[2]{%
   \IfFileExists{#1}{\includegraphics[width=#2]{#1}}{}%
 }
@@ -35,42 +29,38 @@
 \begin{document}
 \pagenumbering{gobble}
 
-% ── Bandeau gauche pleine hauteur ──────────────────────────────────────────────
-\begin{tikzpicture}[remember picture, overlay]
-  \fill[leftbg] (current page.north west)
-    rectangle ($(current page.south west)+(\sidebarw,0)$);
-\end{tikzpicture}%
-
 % HEADER ======================================================================
 \noindent
 {{PHOTO_BLOCK}}
-\begin{minipage}[t]{0.76\textwidth}
+\begin{minipage}[t]{0.74\textwidth}
+\vspace{0pt}
 
-{\color{accent}\sffamily\huge \textbf{ {{FULL_NAME}} }}\\[-2pt]
-{\color{accent}\sffamily\large \textbf{ {{HEADER_TITLE}} }}\\[4pt]
+{\color{accent}\sffamily\Huge \textbf{ {{FULL_NAME}} }}\\[-1pt]
+{\color{accent}\sffamily\Large \textbf{ {{HEADER_TITLE}} }}\\[6pt]
 
+\centering
 \sffamily\small
-
 \href{mailto:{{EMAIL}}}{ {{EMAIL}} }
 \quad|\quad
 \href{ {{LINKEDIN_URL}} }{LinkedIn : {{LINKEDIN_HANDLE}} }
 \quad|\quad
-{{PHONE}} \quad|\quad {{LOCATION}}
+{{PHONE}}\\
+{{LOCATION}}
 
-\vspace{4pt}
-
+\vspace{0.1cm}
+\raggedright
 {{SUMMARY}}
 
 \end{minipage}
 
-\vspace{0.15cm}\noindent\rule{\textwidth}{0.4pt}\vspace{0.05cm}
+\vspace{0.1cm}\noindent\rule{\textwidth}{0.4pt}\vspace{0.05cm}
 
 % COLUMNS =====================================================================
 \noindent
-\begin{minipage}[t]{0.365\textwidth}
-
+\colorbox{leftbg}{%
+\begin{minipage}[t][20cm][t]{0.35\textwidth}
 \color{white}
-\vspace{0.5em}
+\vspace{0.8em}
 
 {{SKILLS_SECTION}}
 
@@ -86,22 +76,20 @@
 
 {{AWARDS_SECTION}}
 
-\vspace{0.3cm}
-
 % Photo d'identité dans le bandeau si uploadée
 {{PHOTO_ID_SIDEBAR_BLOCK}}
 
-% LinkedIn + QR Code (toujours en bas du bandeau)
+\vfill
+\vspace{0.15cm}
 \begin{center}
-\safeimage{Linkedinlogo.PNG}{0.22\linewidth}
+\safeimage{Linkedinlogo.PNG}{0.25\linewidth}
 {{QR_CODE_BLOCK}}
 \end{center}
 
-\vspace{0.2cm}
-
 \end{minipage}%
-\hspace{0.4cm}%
-\begin{minipage}[t]{0.59\textwidth}
+}%
+\hspace{0.35cm}%
+\begin{minipage}[t]{0.58\textwidth}
 
 \color{text}
 
