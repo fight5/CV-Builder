@@ -25,6 +25,18 @@ import streamlit as st
 from . import applications_tracker, config, file_manager
 from .optimum_pipeline import extract_cv_text
 
+# Dossier assets partagé avec le pipeline LaTeX
+_ASSETS_DIR = Path(__file__).resolve().parent.parent / "templates" / "assets"
+
+
+def _save_to_assets(uploaded_file, filename: str) -> Path:
+    """Sauvegarde un fichier uploadé dans templates/assets/ sous le nom filename."""
+    _ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+    dest = _ASSETS_DIR / filename
+    dest.write_bytes(uploaded_file.read())
+    uploaded_file.seek(0)  # reset pour réaffichage Streamlit
+    return dest
+
 
 # ── Utilitaires session_state ────────────────────────────────────────────────
 def _ss_init() -> None:
@@ -125,6 +137,8 @@ def _spawn_runner(
     leftbg_hex: str,
     auto_submit: bool,
     headless: bool,
+    include_photo: bool = False,
+    qr_code_label: str = "",
 ) -> subprocess.Popen:
     cmd = [
         sys.executable, "-m", "modules.auto_apply_runner",
@@ -143,6 +157,10 @@ def _spawn_runner(
         cmd += ["--auto-submit"]
     if headless:
         cmd += ["--headless"]
+    if include_photo:
+        cmd += ["--include-photo"]
+    if qr_code_label:
+        cmd += ["--qr-code-label", qr_code_label]
     cwd = str(Path(__file__).resolve().parent.parent)
     return subprocess.Popen(
         cmd,
@@ -363,6 +381,80 @@ def render() -> None:
 
     auto_submit = mode == "Automatique"
 
+    # ── Photos, QR Code & Logos ───────────────────────────────────────────────
+    with st.expander("📎 Photo · QR Code · Logos (appliqués à chaque CV généré)", expanded=False):
+        st.caption(
+            "Les fichiers sont **sauvegardés une fois** dans `templates/assets/` "
+            "et réutilisés pour chaque CV de la session. "
+            "Les logos sont associés automatiquement par nom de fichier "
+            "(ex. `Safran.png` → expérience Safran)."
+        )
+        ph_col, qr_col, logo_col = st.columns(3)
+
+        with ph_col:
+            st.markdown("**📷 Photo d'identité**")
+            auto_photo_file = st.file_uploader(
+                "Photo (JPG/PNG)",
+                type=["jpg", "jpeg", "png"],
+                key="auto_photo_upload",
+                label_visibility="collapsed",
+            )
+            if auto_photo_file:
+                _save_to_assets(auto_photo_file, "photo_didentite.png")
+                st.image(auto_photo_file, width=80, caption="Photo sauvegardée ✅")
+            else:
+                # Afficher un aperçu si déjà sauvegardée
+                _existing = _ASSETS_DIR / "photo_didentite.png"
+                if _existing.exists():
+                    st.image(str(_existing), width=80, caption="Photo existante")
+
+        with qr_col:
+            st.markdown("**📱 QR Code**")
+            auto_qr_file = st.file_uploader(
+                "QR Code (JPG/PNG)",
+                type=["jpg", "jpeg", "png"],
+                key="auto_qr_upload",
+                label_visibility="collapsed",
+            )
+            auto_qr_label = st.text_input(
+                "Label sous le QR",
+                value=st.session_state.get("auto_qr_label_val", "Mon LinkedIn"),
+                key="auto_qr_label_input",
+                placeholder="ex. Mon LinkedIn",
+            )
+            st.session_state["auto_qr_label_val"] = auto_qr_label
+            if auto_qr_file:
+                _save_to_assets(auto_qr_file, "qrcode.png")
+                st.image(auto_qr_file, width=80, caption="QR sauvegardé ✅")
+
+        with logo_col:
+            st.markdown("**🏢 Logos entreprises / écoles**")
+            auto_logo_files = st.file_uploader(
+                "Logos (JPG/PNG)",
+                type=["jpg", "jpeg", "png"],
+                key="auto_logo_upload",
+                accept_multiple_files=True,
+                label_visibility="collapsed",
+            )
+            if auto_logo_files:
+                for lf in auto_logo_files:
+                    _save_to_assets(lf, lf.name)
+                logo_cols = st.columns(min(len(auto_logo_files), 3))
+                for i, lf in enumerate(auto_logo_files):
+                    with logo_cols[i % 3]:
+                        st.image(lf, width=55, caption=Path(lf.name).stem)
+
+        # Indicateurs d'état
+        _photo_ready = (_ASSETS_DIR / "photo_didentite.png").exists()
+        _qr_ready    = (_ASSETS_DIR / "qrcode.png").exists()
+        _logos_ready = [f.name for f in _ASSETS_DIR.glob("*.png")
+                        if f.name not in ("photo_didentite.png", "qrcode.png", "Linkedinlogo.PNG")]
+        st.caption(
+            f"{'✅' if _photo_ready else '⚪'} Photo  |  "
+            f"{'✅' if _qr_ready else '⚪'} QR Code  |  "
+            f"{'✅' if _logos_ready else '⚪'} Logos : {', '.join(_logos_ready) or 'aucun'}"
+        )
+
     # Préférences CV (compactes — appliquées à chaque CV généré par le runner)
     with st.expander("⚙️ Préférences CV (template, langue, couleurs)", expanded=False):
         p1, p2, p3, p4 = st.columns(4)
@@ -437,6 +529,8 @@ def render() -> None:
                     leftbg_hex=leftbg_hex,
                     auto_submit=auto_submit,
                     headless=headless,
+                    include_photo=(_ASSETS_DIR / "photo_didentite.png").exists(),
+                    qr_code_label=st.session_state.get("auto_qr_label_val", ""),
                 )
                 st.session_state.auto_refresh = True
                 st.success(

@@ -61,6 +61,10 @@ def main() -> int:
     parser.add_argument("--language", default="Français")
     parser.add_argument("--accent-hex", default="#006699")
     parser.add_argument("--leftbg-hex", default="#172E4A")
+    parser.add_argument("--include-photo", action="store_true",
+                        help="Inclure la photo d'identité (templates/assets/photo_didentite.png)")
+    parser.add_argument("--qr-code-label", default="",
+                        help="Label affiché sous le QR code dans le CV.")
     # Compat legacy
     parser.add_argument("--cv-path", default="")
     parser.add_argument("--letter-path", default="")
@@ -91,12 +95,19 @@ def main() -> int:
     if args.job_target_file and Path(args.job_target_file).exists():
         job_target_text = Path(args.job_target_file).read_text(encoding="utf-8")
 
+    # QR code : si qrcode.png existe dans templates/assets, l'utiliser
+    assets_dir = Path(__file__).resolve().parent.parent / "templates" / "assets"
+    qr_path = str(assets_dir / "qrcode.png") if (assets_dir / "qrcode.png").exists() else None
+
     cv_prefs = CVPreferences(
         template=args.template,
         language=args.language,
         accent_hex=args.accent_hex,
         leftbg_hex=args.leftbg_hex,
         aggressive=True,
+        include_photo=args.include_photo,
+        qr_code_path=qr_path,
+        qr_code_label=args.qr_code_label,
     )
 
     _write_state({
