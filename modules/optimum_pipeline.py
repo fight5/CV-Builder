@@ -58,6 +58,11 @@ class CVPreferences:
     leftbg_hex: str = "#172E4A"        # bleu marine bandeau gauche
     include_photo: bool = False
     photo_path: Optional[str] = None
+    # QR code (optionnel) — chemin vers l'image, label affiché en dessous
+    qr_code_path: Optional[str] = None
+    qr_code_label: str = ""
+    # Photo dans le bandeau gauche (optionnel — distinct de la photo header)
+    sidebar_photo_path: Optional[str] = None
     aggressive: bool = True            # le candidat assume les ajouts
     company: str = ""                  # entreprise (pour nommage + lettre)
     generate_letter: bool = False      # générer la lettre de motivation
@@ -199,17 +204,22 @@ RÈGLES STRICTES :
     Ne pas utiliser de caractères d'échappement LaTeX (pas de \\& \\% \\# \\_).
     Le code Python se chargera de l'échappement LaTeX après parsing.
 
-CONTRAINTE 1 PAGE (IMPÉRATIVE) — le CV DOIT tenir sur une seule page A4 :
-- summary : 2 phrases maximum, concises.
-- experiences : conserver les 3 expériences les plus récentes MAXIMUM.
-- bullets par expérience : 3 maximum pour les 2 dernières, 2 pour les plus anciennes.
-- education : 2 entrées maximum.
-- certifications : 4 items maximum.
-- skills : 7 items maximum.
-- tools : 8 items maximum.
-- qualities : 4 items maximum.
-- awards : 2 items maximum.
-- Chaque bullet : 1 ligne courte (< 100 caractères), pas de phrases longues.
+OBJECTIF REMPLISSAGE PAGE A4 COMPLÈTE :
+Le CV DOIT remplir intégralement la page A4 — ni débordement ni espace vide.
+Génère un contenu RICHE, COMPLET et PERCUTANT :
+- summary : 3-4 lignes dynamiques, orientées offre, avec chiffres/impact.
+- experiences : TOUTES les expériences pertinentes du CV source (jusqu'à 5).
+  → 4-5 bullets forts par expérience récente, 3 bullets pour les plus anciennes.
+  → Chaque bullet : 1 ligne avec impact mesurable (%, volumes, gains de temps…).
+  → Enrichir avec les outils/méthodologies de l'offre, cohérents avec le poste réel.
+- education : TOUTES les formations du CV source.
+- skills : liste COMPLÈTE des compétences pertinentes pour le poste (10-15 items).
+- tools : liste COMPLÈTE des outils de l'offre + du CV (10-15 items).
+- certifications : TOUTES les certifications du CV source.
+- qualities : 4-5 items.
+- languages : TOUTES les langues maîtrisées avec le niveau.
+- awards : TOUTES les distinctions/prix du CV source.
+- interests : 3-4 items (pertinents au secteur si possible).
 
 LANGUE de tout le contenu : {language_label}
 
@@ -343,7 +353,11 @@ def _paragraphs_to_latex(body: str) -> str:
 
 # ── Assets (logos, photo) ────────────────────────────────────────────────────
 
-def _copy_assets(output_dir: Path, extra_assets: Optional[dict] = None) -> None:
+def _copy_assets(
+    output_dir: Path,
+    extra_assets: Optional[dict] = None,
+    prefs: Optional["CVPreferences"] = None,
+) -> None:
     """Copie tous les fichiers image de templates/assets/ vers output_dir.
 
     Appelé avant chaque compilation pdflatex pour que les \\includegraphics
@@ -369,6 +383,18 @@ def _copy_assets(output_dir: Path, extra_assets: Optional[dict] = None) -> None:
                     logger.debug("Extra asset copié : %s → %s", src_path, dest)
                 except OSError as e:
                     logger.debug("Extra asset non copié (%s): %s", target_name, e)
+    # QR code
+    if prefs and prefs.qr_code_path and Path(prefs.qr_code_path).exists():
+        try:
+            shutil.copyfile(prefs.qr_code_path, output_dir / "qrcode.png")
+        except OSError as e:
+            logger.debug("QR code non copié : %s", e)
+    # Photo dans le bandeau gauche (sidebar)
+    if prefs and prefs.sidebar_photo_path and Path(prefs.sidebar_photo_path).exists():
+        try:
+            shutil.copyfile(prefs.sidebar_photo_path, output_dir / "sidebar_photo.png")
+        except OSError as e:
+            logger.debug("Sidebar photo non copiée : %s", e)
 
 
 def _find_logo(name: str, extra_filenames: Optional[dict] = None) -> Optional[str]:
@@ -478,6 +504,41 @@ def _photo_block_minimal(prefs: CVPreferences) -> str:
     return ""
 
 
+def _qr_code_block(prefs: CVPreferences) -> str:
+    """Bloc QR code pour le bandeau gauche.
+
+    Affiche l'image QR avec un label optionnel en dessous.
+    Retourne une chaîne LaTeX ou "" si pas de QR code.
+    """
+    if not prefs.qr_code_path:
+        return ""
+    label_tex = ""
+    if prefs.qr_code_label:
+        label_tex = f"\n\\\\[2pt]{{\\tiny\\color{{white}} {_latex_escape(prefs.qr_code_label)}}}"
+    return (
+        "\\vspace{0.3cm}\n"
+        "\\hspace{0.2cm}\\safeimage{qrcode.png}{0.60\\linewidth}"
+        + label_tex
+    )
+
+
+def _sidebar_photo_block(prefs: CVPreferences) -> str:
+    """Photo d'identité ronde/carrée dans le bandeau gauche (optionnel).
+
+    Différente de la photo header — permet d'avoir la photo dans le bandeau
+    si l'utilisateur préfère ce placement.
+    """
+    if not prefs.sidebar_photo_path:
+        return ""
+    return (
+        "\\begin{center}\n"
+        "\\includegraphics[width=0.55\\linewidth,height=0.55\\linewidth,"
+        "keepaspectratio]{sidebar_photo.png}\n"
+        "\\end{center}\n"
+        "\\vspace{0.2cm}"
+    )
+
+
 # ── Template loader ──────────────────────────────────────────────────────────
 def _load_template(name: str) -> str:
     name = (name or "optimum").lower()
@@ -488,12 +549,15 @@ def _load_template(name: str) -> str:
 
 
 def _inject_style(template: str, prefs: CVPreferences) -> str:
-    """Remplace les placeholders globaux (couleurs, langue, photo)."""
+    """Remplace les placeholders globaux (couleurs, langue, photo, QR code)."""
     babel = "english" if prefs.language.lower().startswith("en") else "french"
     accent_rgb = _hex_to_rgb(prefs.accent_hex)
     leftbg_rgb = _hex_to_rgb(prefs.leftbg_hex)
+    is_flat = "FLAT" in template
     photo_optimum = _photo_block(prefs)
     photo_minimal = _photo_block_minimal(prefs)
+    qr_block = _qr_code_block(prefs)
+    sidebar_photo = _sidebar_photo_block(prefs)
     # Headings — l'offre peut être en anglais aussi.
     if babel == "english":
         exp_heading = "Professional Experience"
@@ -505,9 +569,9 @@ def _inject_style(template: str, prefs: CVPreferences) -> str:
         "{{BABEL_LANG}}": babel,
         "{{ACCENT_RGB}}": accent_rgb,
         "{{LEFTBG_RGB}}": leftbg_rgb,
-        "{{PHOTO_BLOCK}}": (
-            photo_minimal if "FLAT" in template else photo_optimum
-        ),
+        "{{PHOTO_BLOCK}}": photo_minimal if is_flat else photo_optimum,
+        "{{PHOTO_ID_SIDEBAR_BLOCK}}": sidebar_photo,
+        "{{QR_CODE_BLOCK}}": qr_block,
         "{{EXPERIENCE_HEADING}}": exp_heading,
         "{{EDUCATION_HEADING}}": edu_heading,
     }
@@ -878,41 +942,75 @@ def _build_letter_latex(
 
 
 # ── Compilation PDF ──────────────────────────────────────────────────────────
-def _tighten_latex_for_one_page(latex_src: str) -> str:
-    """Réduit marges + police + interligne pour forcer 1 page."""
-    # Réduire la taille de police (9.5pt → 8.5pt)
-    patched = re.sub(
-        r'(\\documentclass\[)[\d.]+pt',
-        r'\g<1>8.5pt',
-        latex_src,
-    )
+def _tighten_latex_for_one_page(latex_src: str, level: int = 1) -> str:
+    """Réduit marges + police + interligne pour forcer 1 page.
+
+    level=1 : resserrement doux   (9.5pt→9pt,  margins 1.0cm)
+    level=2 : resserrement fort   (9.5pt→8.5pt, margins 0.75cm)
+    """
+    if level == 1:
+        font = "9pt"
+        margin = r"\usepackage[margin=1.0cm,top=0.8cm,bottom=0.7cm]{geometry}"
+        linespread = r"\linespread{0.92}\selectfont"
+        sidebar_w = r"\setlength{\sidebarw}{0.403\paperwidth}"
+        enlarge = r"\enlargethispage*{2\baselineskip}"
+        vspace_map = [
+            (r'\vspace{0.8em}',   r'\vspace{0.4em}'),
+            (r'\vspace{0.6em}',   r'\vspace{0.3em}'),
+            (r'\vspace{0.45cm}',  r'\vspace{0.2cm}'),
+            (r'\vspace{0.3cm}',   r'\vspace{0.15cm}'),
+            (r'\vspace{0.2cm}',   r'\vspace{0.1cm}'),
+            (r'\vspace{0.15cm}',  r'\vspace{0.08cm}'),
+            (r'\vspace{0.1cm}',   r'\vspace{0.05cm}'),
+            (r'\\[4pt]',          r'\\[2pt]'),
+            (r'\\[6pt]',          r'\\[3pt]'),
+        ]
+        list_inject = (
+            r'\setlist{nosep,topsep=2pt,parsep=0pt,partopsep=0pt,leftmargin=1.2em}' + '\n'
+        )
+    else:
+        font = "8.5pt"
+        margin = r"\usepackage[margin=0.75cm,top=0.55cm,bottom=0.55cm]{geometry}"
+        linespread = r"\linespread{0.88}\selectfont"
+        sidebar_w = r"\setlength{\sidebarw}{0.400\paperwidth}"
+        enlarge = r"\enlargethispage*{4\baselineskip}"
+        vspace_map = [
+            (r'\vspace{0.8em}',   r'\vspace{0.05em}'),
+            (r'\vspace{0.6em}',   r'\vspace{0.03em}'),
+            (r'\vspace{0.5em}',   r'\vspace{0.02em}'),
+            (r'\vspace{0.45cm}',  r'\vspace{0.1cm}'),
+            (r'\vspace{0.3cm}',   r'\vspace{0.08cm}'),
+            (r'\vspace{0.2cm}',   r'\vspace{0.04cm}'),
+            (r'\vspace{0.15cm}',  r'\vspace{0.03cm}'),
+            (r'\vspace{0.1cm}',   r'\vspace{0.02cm}'),
+            (r'\vspace{0.05cm}',  r'\vspace{0.01cm}'),
+            (r'\\[4pt]',          r'\\[1pt]'),
+            (r'\\[6pt]',          r'\\[2pt]'),
+            (r'\\[2pt]',          r'\\[0pt]'),
+        ]
+        list_inject = (
+            r'\setlist{nosep,topsep=1pt,parsep=0pt,partopsep=0pt,leftmargin=1.2em}' + '\n'
+        )
+
+    # Réduire la taille de police
+    patched = re.sub(r'(\\documentclass\[)[\d.]+pt', r'\g<1>' + font, latex_src)
     # Réduire les marges (geometry)
+    patched = re.sub(r'\\usepackage\[[^\]]*\]\{geometry\}', margin, patched)
+    # Mettre à jour la largeur du bandeau
     patched = re.sub(
-        r'\\usepackage\[margin=[^\]]+\]\{geometry\}',
-        r'\\usepackage[margin=0.75cm,top=0.55cm,bottom=0.55cm]{geometry}',
+        r'\\setlength\{\\sidebarw\}\{[^}]+\}',
+        sidebar_w,
         patched,
     )
-    # Réduire l'espacement vertical entre sections
-    for old, new in [
-        (r'\vspace{0.6em}', r'\vspace{0.05em}'),
-        (r'\vspace{0.4em}', r'\vspace{0.02em}'),
-        (r'\vspace{0.45cm}', r'\vspace{0.15cm}'),
-        (r'\vspace{0.1cm}', r'\vspace{0.02cm}'),
-        (r'\vspace{0.2cm}', r'\vspace{0.05cm}'),
-    ]:
+    # Réduire les espacements
+    for old, new in vspace_map:
         patched = patched.replace(old, new)
-    # Injecter juste avant \begin{document} : interligne serré + enumerate compact
-    inject = (
-        r'\linespread{0.88}\selectfont' + '\n'
-        r'\usepackage{enumitem}' + '\n'
-        r'\setlist{nosep,topsep=1pt,parsep=0pt,partopsep=0pt,leftmargin=1.2em}' + '\n'
-    )
-    patched = patched.replace(r'\begin{document}', inject + r'\begin{document}')
-    # Ajouter \enlargethispage* juste après \begin{document}
-    patched = patched.replace(
-        r'\begin{document}' + '\n',
-        r'\begin{document}' + '\n' + r'\enlargethispage*{4\baselineskip}' + '\n',
-    )
+    # Injecter interligne + itemize compact avant \begin{document}
+    inject_pre = linespread + '\n' + list_inject
+    patched = patched.replace(r'\begin{document}', inject_pre + r'\begin{document}')
+    # \enlargethispage juste après \begin{document}
+    after_begin = r'\begin{document}' + '\n'
+    patched = patched.replace(after_begin, after_begin + enlarge + '\n', 1)
     return patched
 
 
@@ -933,14 +1031,15 @@ def _compile_latex(
     base_name: str,
     extra_assets: Optional[dict] = None,
     enforce_one_page: bool = True,
+    prefs: Optional[CVPreferences] = None,
 ) -> tuple[Optional[bytes], list[str]]:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     safe = re.sub(r"[^A-Za-z0-9_\-]+", "_", base_name) or "document"
     tex_path = OUTPUT_DIR / f"{safe}.tex"
     pdf_path = OUTPUT_DIR / f"{safe}.pdf"
 
-    # Copier les assets (logos, photo) dans outputs/ pour que pdflatex les trouve
-    _copy_assets(OUTPUT_DIR, extra_assets)
+    # Copier les assets (logos, photo, QR code) dans outputs/ pour que pdflatex les trouve
+    _copy_assets(OUTPUT_DIR, extra_assets, prefs=prefs)
 
     errors: list[str] = []
     if shutil.which("pdflatex") is None:
@@ -983,25 +1082,32 @@ def _compile_latex(
     if not pdf_path.exists():
         return None, errors or ["PDF non produit."]
 
-    # Passe 2 — si > 1 page, on resserre marges + police et on recompile
+    # Passe 2 — si > 1 page, resserrement en 2 niveaux
     if enforce_one_page:
         pages = _count_pdf_pages(pdf_path)
         if pages > 1:
-            logger.info("CV dépasse 1 page (%d pages) — resserrement et recompilation.", pages)
-            tighter = _tighten_latex_for_one_page(latex_src)
-            ok2, err2 = _run_pdflatex(tighter)
+            logger.info("CV %d pages — resserrement niveau 1.", pages)
+            tighter1 = _tighten_latex_for_one_page(latex_src, level=1)
+            ok2, err2 = _run_pdflatex(tighter1)
             if ok2 and pdf_path.exists():
                 pages2 = _count_pdf_pages(pdf_path)
                 if pages2 > 1:
-                    logger.warning("CV toujours %d pages après resserrement — on conserve.", pages2)
-                    errors.append(
-                        f"⚠ CV généré en {pages2} pages (objectif 1 page). "
-                        "Réduisez le contenu ou la taille de police."
-                    )
+                    logger.info("Toujours %d pages — resserrement niveau 2.", pages2)
+                    tighter2 = _tighten_latex_for_one_page(latex_src, level=2)
+                    ok3, err3 = _run_pdflatex(tighter2)
+                    if ok3 and pdf_path.exists():
+                        pages3 = _count_pdf_pages(pdf_path)
+                        if pages3 > 1:
+                            logger.warning("CV %d pages après niveau 2 — contenu trop dense.", pages3)
+                            errors.append(
+                                f"⚠ CV généré en {pages3} pages malgré le resserrement maximum. "
+                                "Conseil : réduisez le nombre de bullets ou retirez une expérience."
+                            )
+                    else:
+                        logger.warning("Niveau 2 échoué (%s) — PDF niveau 1 conservé.", err3)
+                        _run_pdflatex(tighter1)
             else:
-                # Recompilation resserrée a échoué — on garde le PDF original
-                logger.warning("Recompilation resserrée échouée (%s) — PDF original conservé.", err2)
-                # Relancer la version normale pour retrouver le PDF
+                logger.warning("Niveau 1 échoué (%s) — PDF original conservé.", err2)
                 _run_pdflatex(latex_src)
 
     if not pdf_path.exists():
@@ -1079,6 +1185,7 @@ def run_optimum_pipeline(
         cv_latex, cv_base,
         extra_assets=prefs.extra_assets,
         enforce_one_page=True,
+        prefs=prefs,
     )
     out["cv_pdf_bytes"] = cv_bytes
     out["cv_errors"] = cv_errors

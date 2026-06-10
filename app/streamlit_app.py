@@ -152,24 +152,50 @@ def _render_cv_letter():
             help="Utilisé uniquement pour le template Optimum.",
         )
 
-    # ── Photos & Logos ───────────────────────────────────────────────────────
-    with st.expander("📎 Photos & Logos (facultatif)"):
+    # ── Photos, QR Code & Logos ──────────────────────────────────────────────
+    with st.expander("📎 Photo · QR Code · Logos (facultatif)"):
         st.caption(
-            "Uploadez votre photo d'identité et/ou les logos des entreprises / "
-            "écoles de votre CV. Les logos sont automatiquement associés aux noms "
-            "présents dans votre CV (ex. 'Sanofi.png' → expérience Sanofi)."
+            "Uploadez votre **photo d'identité**, votre **QR code** (LinkedIn, portfolio…) "
+            "et/ou les **logos** des entreprises/écoles de votre CV. "
+            "Les logos sont associés automatiquement aux noms présents dans le CV "
+            "(ex. `Sanofi.png` → expérience Sanofi)."
         )
-        ph_col, logo_col = st.columns(2)
-        with ph_col:
-            st.markdown("**📷 Photo d'identité**")
+
+        row1_col, row2_col, row3_col = st.columns(3)
+
+        # ── Photo d'identité (header du CV) ─────────────────────────────────
+        with row1_col:
+            st.markdown("**📷 Photo d'identité** *(en-tête)*")
             photo_file = st.file_uploader(
-                "Photo (JPG/PNG)",
+                "Photo header (JPG/PNG)",
                 type=["jpg", "jpeg", "png"],
                 key="optimum_photo_upload",
                 label_visibility="collapsed",
             )
-        with logo_col:
-            st.markdown("**🏢 Logos (plusieurs possibles)**")
+            if photo_file:
+                st.image(photo_file, width=90, caption="Photo header")
+
+        # ── QR Code ──────────────────────────────────────────────────────────
+        with row2_col:
+            st.markdown("**📱 QR Code** *(LinkedIn, portfolio…)*")
+            qr_file = st.file_uploader(
+                "QR Code (JPG/PNG)",
+                type=["jpg", "jpeg", "png"],
+                key="optimum_qr_upload",
+                label_visibility="collapsed",
+            )
+            qr_label = st.text_input(
+                "Label sous le QR",
+                value="Mon LinkedIn",
+                key="optimum_qr_label",
+                placeholder="ex. Mon LinkedIn",
+            )
+            if qr_file:
+                st.image(qr_file, width=90, caption=qr_label or "QR Code")
+
+        # ── Logos entreprises / écoles ────────────────────────────────────────
+        with row3_col:
+            st.markdown("**🏢 Logos** *(entreprises / écoles)*")
             logo_files = st.file_uploader(
                 "Logos (JPG/PNG)",
                 type=["jpg", "jpeg", "png"],
@@ -177,9 +203,16 @@ def _render_cv_letter():
                 accept_multiple_files=True,
                 label_visibility="collapsed",
             )
+            if logo_files:
+                logo_preview_cols = st.columns(min(len(logo_files), 3))
+                for i, lf in enumerate(logo_files):
+                    with logo_preview_cols[i % 3]:
+                        st.image(lf, width=60, caption=Path(lf.name).stem)
 
+        # ── Traitement des fichiers uploadés ─────────────────────────────────
         include_photo = False
         photo_path: str | None = None
+        qr_code_path: str | None = None
         extra_assets: dict = {}
 
         if photo_file:
@@ -188,18 +221,20 @@ def _render_cv_letter():
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                 tmp.write(photo_file.read())
                 photo_path = tmp.name
-            st.image(photo_file, width=100, caption=photo_file.name)
+
+        if qr_file:
+            suffix = Path(qr_file.name).suffix.lower()
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp.write(qr_file.read())
+                qr_code_path = tmp.name
 
         if logo_files:
-            logo_preview_cols = st.columns(min(len(logo_files), 5))
-            for i, lf in enumerate(logo_files):
+            for lf in logo_files:
                 suffix = Path(lf.name).suffix.lower()
                 with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                     tmp.write(lf.read())
                     tmp_path = tmp.name
                 extra_assets[lf.name] = tmp_path
-                with logo_preview_cols[i % len(logo_preview_cols)]:
-                    st.image(lf, width=80, caption=Path(lf.name).stem)
 
     # ── Lettre de motivation ─────────────────────────────────────────────────
     generate_letter = st.checkbox(
@@ -231,6 +266,8 @@ def _render_cv_letter():
             leftbg_hex=leftbg_hex,
             include_photo=include_photo,
             photo_path=photo_path,
+            qr_code_path=qr_code_path,
+            qr_code_label=qr_label if qr_file else "",
             aggressive=True,
             company=company.strip(),
             generate_letter=generate_letter,
