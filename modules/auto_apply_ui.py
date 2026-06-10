@@ -75,13 +75,16 @@ def _launch_setup_script(platform: str, switch: bool = False) -> bool:
         return False
 
     cwd = str(script.parent)
-    extra = " --switch" if switch else ""
+    extra_args = ["--switch"] if switch else []
     try:
         if os.name == "nt":
-            # Windows : nouvelle fenêtre cmd qui reste ouverte
+            # Windows : nouvelle fenêtre cmd qui reste ouverte après exécution.
+            # start "" = titre vide (obligatoire quand la commande contient des espaces)
+            # /k       = garde le cmd ouvert après la fin du script
             subprocess.Popen(
-                f'start cmd /k "{sys.executable}" "{script}"{extra}',
-                shell=True,
+                ["cmd", "/c", "start", "LinkedIn Setup", "cmd", "/k",
+                 sys.executable, str(script)] + extra_args,
+                shell=False,
                 cwd=cwd,
             )
         else:
@@ -311,9 +314,13 @@ def render() -> None:
                             f"{spec.label} dans la fenêtre qui s'est ouverte.\n\n"
                             "Cette page se rafraîchira automatiquement une fois connecté."
                         )
-                        # Auto-rerun toutes les 3s jusqu'à détection du profil
-                        time.sleep(3)
-                        st.rerun()
+                        # Auto-refresh toutes les 3s sans bloquer le WebSocket
+                        try:
+                            from streamlit_autorefresh import st_autorefresh
+                            st_autorefresh(interval=3000, key=f"login_poll_{key}")
+                        except ImportError:
+                            time.sleep(0.3)
+                            st.rerun()
 
                 # Fallback manuel si lancement auto a échoué
                 elif st.session_state.get(f"login_pending_{key}"):
@@ -470,10 +477,15 @@ def render() -> None:
     else:
         st.caption("Aucun log pour le moment.")
 
-    # Auto-rerun toutes les 2 s tant que le runner tourne.
+    # Auto-refresh toutes les 2s tant que le runner tourne — sans bloquer le WebSocket.
     if _proc_alive(st.session_state.runner_proc):
-        time.sleep(2)
-        st.rerun()
+        try:
+            from streamlit_autorefresh import st_autorefresh
+            st_autorefresh(interval=2000, key="runner_poll")
+        except ImportError:
+            # Fallback si package absent (ne pas bloquer 2s entières)
+            time.sleep(0.3)
+            st.rerun()
     else:
         if st.session_state.auto_refresh:
             st.session_state.auto_refresh = False
