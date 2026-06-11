@@ -39,8 +39,12 @@ if not _IS_CLOUD:
     _IS_CLOUD = bool(os.getenv("STREAMLIT_SHARING_MODE") or os.getenv("IS_STREAMLIT_CLOUD"))
 
 import importlib
-from modules import auto_apply_ui
-importlib.reload(auto_apply_ui)  # force reload after hot-deploy
+try:
+    from modules import auto_apply_ui
+    importlib.reload(auto_apply_ui)  # force reload after hot-deploy
+    _AUTO_APPLY_AVAILABLE = True
+except Exception:
+    _AUTO_APPLY_AVAILABLE = False
 from modules.optimum_pipeline import (
     CVPreferences,
     extract_cv_text,
@@ -401,7 +405,7 @@ def main():
 
     st.markdown("---")
 
-    if st.session_state.page == "auto" and not _IS_CLOUD:
+    if st.session_state.page == "auto" and not _IS_CLOUD and _AUTO_APPLY_AVAILABLE:
         auto_apply_ui.render()
     else:
         _render_cv_letter()

@@ -1,9 +1,3 @@
 texlive-latex-base
-texlive-latex-recommended
-texlive-latex-extra
 texlive-fonts-recommended
-texlive-fonts-extra
-texlive-xetex
-texlive-lang-french
-lmodern
-cm-super
+texlive-latex-extra
