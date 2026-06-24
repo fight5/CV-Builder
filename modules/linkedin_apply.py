@@ -729,11 +729,19 @@ def _upload_cv(session: BrowserSession, cv_path: str, job: Job) -> None:
     """
     import time as _t
 
-    # Étape 1 : cliquer "Changer de CV" / "Upload a different resume" si présent
+    # Étape 1 : cliquer le bouton d'upload LinkedIn
+    # LinkedIn FR 2025 : "Télécharger le CV" · EN : "Upload resume" · variantes selon version
     _change_btn_needles = [
-        "Changer de CV", "Changer le CV", "Téléverser un CV différent",
-        "Upload a different resume", "Change resume", "Changer",
-        "Upload resume", "Téléverser",
+        "Télécharger le CV",
+        "Télécharger un CV",
+        "Upload resume",
+        "Upload a different resume",
+        "Change resume",
+        "Changer de CV",
+        "Changer le CV",
+        "Téléverser un CV différent",
+        "Téléverser",
+        "Changer",
     ]
     for needle in _change_btn_needles:
         try:

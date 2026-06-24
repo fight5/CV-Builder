@@ -82,6 +82,14 @@ def _write_state(state: dict) -> None:
 
 
 def main() -> int:
+    # Charger le .env du projet — nécessaire quand le runner est lancé en subprocess
+    # (le subprocess n'hérite pas des vars chargées par load_dotenv du parent Streamlit)
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(ROOT / ".env")
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(description="Runner de candidatures automatiques")
     parser.add_argument("--platform", required=True, choices=list(PLATFORM_MODULES))
     parser.add_argument("--keywords", required=True)
