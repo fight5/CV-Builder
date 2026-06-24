@@ -213,13 +213,13 @@ Génère un contenu RICHE, COMPLET et PERCUTANT :
   → Chaque bullet : 1 ligne avec impact mesurable (%, volumes, gains de temps…).
   → Enrichir avec les outils/méthodologies de l'offre, cohérents avec le poste réel.
 - education : TOUTES les formations du CV source.
-- skills : liste COMPLÈTE des compétences pertinentes pour le poste (10-15 items).
-- tools : liste COMPLÈTE des outils de l'offre + du CV (10-15 items).
-- certifications : TOUTES les certifications du CV source.
-- qualities : 4-5 items.
+- skills : les compétences LES PLUS PERTINENTES pour le poste (6-8 items MAX — qualité > quantité).
+- tools : les outils LES PLUS PERTINENTS de l'offre + du CV (6-8 items MAX).
+- certifications : TOUTES les certifications du CV source (≤ 4).
+- qualities : 4-5 items MAX (soft skills distinctifs, pas génériques).
 - languages : TOUTES les langues maîtrisées avec le niveau.
-- awards : TOUTES les distinctions/prix du CV source.
-- interests : 3-4 items (pertinents au secteur si possible).
+- awards : distinctions du CV source (≤ 3).
+- interests : 2-3 items MAX (pertinents au secteur).
 
 LANGUE de tout le contenu : {language_label}
 
@@ -751,6 +751,30 @@ def _try_fix_json(raw: str) -> str:
     return ''.join(out)
 
 
+# ── Limites colonne gauche (évite le débordement A4) ────────────────────────
+# La colonne gauche (0.275\textwidth) tient ~35-38 items au total.
+# Chaque section a un header (~1 ligne) + ses items (certains wrappent sur 2).
+# Budget : 8+8+5+4+3+3+4 = 35 items + 7 headers → ~42 lignes visuelles, safe.
+_LEFT_COL_LIMITS: dict[str, int] = {
+    "skills":         8,
+    "tools":          8,
+    "qualities":      5,
+    "interests":      3,
+    "awards":         3,
+    "certifications": 4,
+    "languages":      5,
+}
+
+
+def _cap_left_column(data: dict) -> dict:
+    """Tronque les listes de la colonne gauche pour éviter le débordement LaTeX."""
+    for key, limit in _LEFT_COL_LIMITS.items():
+        items = data.get(key)
+        if isinstance(items, list) and len(items) > limit:
+            data[key] = items[:limit]
+    return data
+
+
 # ── Génération CV ────────────────────────────────────────────────────────────
 def _strip_code_fences(text: str) -> str:
     text = text.strip()
@@ -844,6 +868,9 @@ def generate_optimized_cv(
             raise RuntimeError(
                 f"Le LLM n'a pas retourné un JSON valide : {e}\n---\n{raw[:800]}"
             )
+
+    # Limiter la colonne gauche pour éviter le débordement A4
+    data = _cap_left_column(data)
 
     # Construire le LaTeX en injectant les données dans le template fixe
     latex = _build_latex_from_json(data, template, prefs)
