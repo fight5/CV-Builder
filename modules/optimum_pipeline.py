@@ -594,11 +594,11 @@ def _build_section_block_optimum(title: str, items: list[str]) -> str:
     )
     return (
         f"{{\\color{{white}}\\sffamily\\bfseries {title}}}\n\n"
-        f"\\vspace{{0.2cm}}\n\n"
+        f"\\vspace{{0.25cm}}\n\n"
         f"\\begin{{itemize}}[label=\\textcolor{{white}}{{$\\blacktriangleright$}}]\n"
         f"{rows}\n"
         f"\\end{{itemize}}\n\n"
-        f"\\vspace{{0.45cm}}\n"
+        f"\\vspace{{0.55cm}}\n"
     )
 
 
