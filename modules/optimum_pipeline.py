@@ -519,7 +519,7 @@ def _qr_code_block(prefs: CVPreferences) -> str:
         label_tex = f"\n\\\\[2pt]{{\\tiny\\color{{white}} {_latex_escape(prefs.qr_code_label)}}}"
     return (
         "\\vspace{0.3cm}\n"
-        "\\hspace{0.2cm}\\safeimage{qrcode.png}{0.60\\linewidth}"
+        "\\hspace{0.2cm}\\safeimage{qrcode.png}{0.38\\linewidth}"
         + label_tex
     )
 
