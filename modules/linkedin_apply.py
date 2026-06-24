@@ -935,10 +935,11 @@ _RADIO_ANSWERS: list[tuple[str, str]] = [
     ("right to work",           "yes"),
     ("droit de travailler",     "oui"),
     ("legally authorized",      "yes"),
-    # Visa / sponsorship → Non
-    ("visa",                    "non"),
+    # Visa / sponsorship → Non/No
+    # "no" est contenu dans "non" (FR) ET dans "no" (EN) → fonctionne dans les deux langues
+    ("visa",                    "no"),
     ("sponsorship",             "no"),
-    ("parrainage",              "non"),
+    ("parrainage",              "no"),
     ("sponsor",                 "no"),
     # Télétravail / disponibilité → Oui
     ("télétravail",             "oui"),
