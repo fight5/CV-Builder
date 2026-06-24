@@ -600,16 +600,9 @@ def apply_to_job(
         except Exception:
             pass
 
-        # Si CV requis et un input file est visible, on uploade.
+        # Upload du CV généré si disponible.
         if cv_path:
-            try:
-                file_input = session.page.locator("input[type='file']").first
-                if file_input.count() and file_input.is_visible(timeout=1000):
-                    file_input.set_input_files(cv_path)
-                    session.log("info", "CV uploadé")
-                    session.human_pause()
-            except Exception:
-                pass
+            _upload_cv(session, cv_path, job)
 
         # Lettre : si un textarea cover letter est visible.
         if letter_text:
@@ -624,10 +617,9 @@ def apply_to_job(
             except Exception:
                 pass
 
-        # Auto-remplir les champs numériques "années d'expérience"
-        # LinkedIn Easy Apply pose souvent des questions du type :
-        # "Depuis combien d'années utilisez-vous X ?"
-        _autofill_experience_fields(session)
+        # Auto-remplir TOUS les champs requis du modal :
+        # radio buttons, selects, téléphone, salaire, années d'expérience.
+        _autofill_all_fields(session)
 
         # ── Chercher les boutons de navigation du modal ──────────────────────
         # LinkedIn 2025 Easy Apply modal : les boutons sont dans [role='dialog']
@@ -725,6 +717,54 @@ def apply_to_job(
         return "skipped", f"Etape {step} bloquée (pas de bouton Suivant/Submit). Screenshot: {screenshot.name}"
 
     return "skipped", f"Plus de {MAX_STEPS} étapes — abandon (formulaire trop long)"
+
+
+def _upload_cv(session: BrowserSession, cv_path: str, job: Job) -> None:
+    """Upload le CV généré dans le modal Easy Apply.
+
+    LinkedIn cache le <input type="file"> derrière un bouton "Changer" /
+    "Upload a different resume". Il faut d'abord cliquer ce bouton pour
+    exposer le file input dans le DOM, puis appeler set_input_files().
+    set_input_files() fonctionne sur les inputs cachés — pas besoin de is_visible().
+    """
+    import time as _t
+
+    # Étape 1 : cliquer "Changer de CV" / "Upload a different resume" si présent
+    _change_btn_needles = [
+        "Changer de CV", "Changer le CV", "Téléverser un CV différent",
+        "Upload a different resume", "Change resume", "Changer",
+        "Upload resume", "Téléverser",
+    ]
+    for needle in _change_btn_needles:
+        try:
+            btn = session.page.locator("button, a, label").filter(has_text=needle)
+            if btn.count() > 0:
+                btn.first.click(timeout=3000)
+                session.log("info", f"Bouton '{needle}' cliqué — attente file input")
+                _t.sleep(1.0)
+                break
+        except Exception:
+            continue
+
+    # Étape 2 : chercher le file input (visible ou caché — set_input_files fonctionne dans les deux cas)
+    _file_input_sels = [
+        "input[type='file'][accept*='pdf']",
+        "input[type='file'][accept*='doc']",
+        "input[type='file']",
+    ]
+    for sel in _file_input_sels:
+        try:
+            fi = session.page.locator(sel).first
+            if fi.count() > 0:
+                fi.set_input_files(cv_path)
+                session.log("info", f"CV uploadé : {cv_path}")
+                session.human_pause()
+                return
+        except Exception as e:
+            session.log("debug", f"Upload tentative ({sel}) : {e}")
+            continue
+
+    session.log("warning", f"File input introuvable — CV non uploadé pour {job.title} @ {job.company}")
 
 
 def _looks_disabled(locator) -> bool:
@@ -861,6 +901,362 @@ def _autofill_experience_fields(session: BrowserSession) -> int:
                 session.log("debug", f"Auto-fill error ({label[:30]}): {e}")
     except Exception as e:
         session.log("debug", f"_autofill_experience_fields: {e}")
+    return filled
+
+
+def _load_apply_profile() -> dict:
+    """Charge les données de profil depuis user_profile.json."""
+    try:
+        from .config import USER_PROFILE_JSON
+        if USER_PROFILE_JSON.exists():
+            import json as _json
+            return _json.loads(USER_PROFILE_JSON.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+# ── Tables pour l'auto-remplissage des champs requis ────────────────────────
+# Radio buttons : legend (lowercase) → réponse attendue ("oui" / "non" / "yes" / "no")
+_RADIO_ANSWERS: list[tuple[str, str]] = [
+    # Autorisation de travail → Oui
+    ("légalement autorisé",     "oui"),
+    ("autorisé à travailler",   "oui"),
+    ("authorized to work",      "yes"),
+    ("work authorization",      "yes"),
+    ("right to work",           "yes"),
+    ("droit de travailler",     "oui"),
+    ("legally authorized",      "yes"),
+    # Visa / sponsorship → Non
+    ("visa",                    "non"),
+    ("sponsorship",             "no"),
+    ("parrainage",              "non"),
+    ("sponsor",                 "no"),
+    # Télétravail / disponibilité → Oui
+    ("télétravail",             "oui"),
+    ("remote",                  "yes"),
+    ("hybride",                 "oui"),
+    ("hybrid",                  "yes"),
+    ("disponible",              "oui"),
+    ("available",               "yes"),
+]
+
+# Mots-clés pour le téléphone (champ text)
+_PHONE_KEYWORDS = ["téléphone", "phone", "mobile", "portable", "numéro de contact", "tel"]
+# Mots-clés pour le salaire
+_SALARY_KEYWORDS = ["salaire", "salary", "prétention", "rémunération", "pretention", "remuneration",
+                    "compensation", "expected salary"]
+# Mots-clés pour le code postal
+_ZIP_KEYWORDS = ["code postal", "zip", "postal code"]
+
+# Salaire cible par défaut (brut annuel FR)
+_DEFAULT_SALARY = "55000"
+
+
+def _autofill_all_fields(session: BrowserSession) -> None:
+    """Remplit tous les champs requis visibles dans le modal Easy Apply.
+
+    Gère dans l'ordre :
+    1. Radio buttons requis (autorisation travail, visa, etc.)
+    2. Select / combobox requis (premier choix valide)
+    3. Champs texte requis (téléphone, salaire, code postal)
+    4. Champs numériques "années d'expérience"
+    5. Checkboxes requises
+    """
+    _autofill_radio_fields(session)
+    _autofill_select_fields(session)
+    _autofill_contact_fields(session)
+    _autofill_experience_fields(session)
+    _autofill_checkbox_fields(session)
+
+
+def _autofill_radio_fields(session: BrowserSession) -> int:
+    """Coche les radio buttons requis non remplis.
+
+    Stratégie :
+    - Si la question contient un mot-clé "autorisation travail" → choisir "Oui"
+    - Si la question contient "visa/sponsorship" → choisir "Non"
+    - Sinon → choisir le 1er bouton radio disponible (souvent "Oui")
+
+    Retourne le nombre de groupes remplis.
+    """
+    import time as _t
+    filled = 0
+    try:
+        groups = session.page.evaluate("""
+            () => {
+                const results = [];
+                // Chercher dans le modal ou sur la page entière
+                const root = document.querySelector("[role='dialog']") || document.body;
+                const fieldsets = Array.from(root.querySelectorAll('fieldset'));
+                for (const fs of fieldsets) {
+                    const radios = Array.from(fs.querySelectorAll('input[type="radio"]'));
+                    if (radios.length === 0) continue;
+                    // Ignorer les groupes déjà cochés
+                    if (radios.some(r => r.checked)) continue;
+                    // Obtenir le texte de la question (legend > span ou legend direct)
+                    const legend = fs.querySelector('legend');
+                    let legendText = '';
+                    if (legend) {
+                        legendText = (legend.innerText || legend.textContent || '').trim().toLowerCase();
+                    }
+                    // Construire la liste des options
+                    const options = radios.map(r => {
+                        let lblText = '';
+                        if (r.id) {
+                            const lbl = document.querySelector('label[for="' + r.id + '"]');
+                            if (lbl) lblText = (lbl.innerText || lbl.textContent || '').trim().toLowerCase();
+                        }
+                        // Fallback: parent label
+                        if (!lblText) {
+                            const pLabel = r.closest('label');
+                            if (pLabel) lblText = (pLabel.innerText || pLabel.textContent || '').trim().toLowerCase();
+                        }
+                        return {id: r.id, value: r.value, label: lblText};
+                    });
+                    results.push({legend: legendText, options});
+                }
+                return results;
+            }
+        """)
+
+        profile = _load_apply_profile()
+
+        for group in groups:
+            legend = group.get("legend", "")
+            options = group.get("options", [])
+            if not options:
+                continue
+
+            # Déterminer la réponse cible
+            target_answer = None
+            for keyword, answer in _RADIO_ANSWERS:
+                if keyword in legend:
+                    target_answer = answer
+                    break
+
+            if target_answer is None:
+                # Par défaut : premier bouton disponible
+                chosen = options[0]
+            else:
+                # Chercher l'option dont le label correspond ("oui", "non", "yes", "no")
+                chosen = None
+                for opt in options:
+                    if target_answer in opt.get("label", ""):
+                        chosen = opt
+                        break
+                # Fallback si pas trouvé : premier bouton
+                if chosen is None:
+                    chosen = options[0]
+
+            # Cliquer sur le radio button sélectionné
+            if not chosen.get("id"):
+                continue
+            try:
+                radio = session.page.locator(f"#{chosen['id']}").first
+                if radio.count() and not radio.is_checked(timeout=500):
+                    radio.check(timeout=3000)
+                    session.log("info",
+                        f"Radio auto-fill: '{legend[:60]}' → '{chosen.get('label','')[:30]}'")
+                    filled += 1
+                    _t.sleep(0.3)
+            except Exception as e:
+                session.log("debug", f"Radio check error ({legend[:30]}): {e}")
+
+    except Exception as e:
+        session.log("debug", f"_autofill_radio_fields: {e}")
+    return filled
+
+
+def _autofill_select_fields(session: BrowserSession) -> int:
+    """Remplit les <select> requis avec le 1er choix valide.
+
+    Retourne le nombre de selects remplis.
+    """
+    import time as _t
+    filled = 0
+    try:
+        selects_info = session.page.evaluate("""
+            () => {
+                const root = document.querySelector("[role='dialog']") || document.body;
+                const results = [];
+                const selects = Array.from(root.querySelectorAll('select'));
+                for (const sel of selects) {
+                    const style = window.getComputedStyle(sel);
+                    if (style.display === 'none' || style.visibility === 'hidden') continue;
+                    // Déjà une valeur non-vide ?
+                    if (sel.value && sel.value !== '' && sel.selectedIndex > 0) continue;
+                    const lbl = sel.id ? document.querySelector('label[for="' + sel.id + '"]') : null;
+                    const lblText = lbl ? (lbl.innerText || lbl.textContent || '').trim().toLowerCase() : '';
+                    const opts = Array.from(sel.options).map(o => ({value: o.value, text: o.text}));
+                    results.push({id: sel.id || '', name: sel.name || '', label: lblText, options: opts});
+                }
+                return results;
+            }
+        """)
+
+        for sel_info in selects_info:
+            sel_id = sel_info.get("id", "")
+            opts = sel_info.get("options", [])
+            label = sel_info.get("label", "")
+            # Trouver le premier choix non-vide (ignorer placeholders)
+            chosen_value = None
+            for opt in opts:
+                v = opt.get("value", "")
+                t = opt.get("text", "").lower().strip()
+                if v and v not in ("", "0", "-1") and t not in (
+                    "sélectionner une option", "select an option",
+                    "select", "sélectionner", "-- select --", "--", "choose"
+                ):
+                    chosen_value = v
+                    break
+            if chosen_value is None:
+                continue
+            try:
+                if sel_id:
+                    sel_loc = session.page.locator(f"select#{sel_id}").first
+                else:
+                    sel_loc = session.page.locator(f"select[name='{sel_info.get('name','')}']").first
+                if sel_loc.count():
+                    sel_loc.select_option(value=chosen_value)
+                    session.log("info", f"Select auto-fill: '{label[:50]}' → '{chosen_value[:30]}'")
+                    filled += 1
+                    _t.sleep(0.3)
+            except Exception as e:
+                session.log("debug", f"Select fill error ({label[:30]}): {e}")
+
+    except Exception as e:
+        session.log("debug", f"_autofill_select_fields: {e}")
+    return filled
+
+
+def _autofill_contact_fields(session: BrowserSession) -> int:
+    """Remplit les champs de contact requis : téléphone, salaire, code postal.
+
+    Retourne le nombre de champs remplis.
+    """
+    import time as _t
+    filled = 0
+    profile = _load_apply_profile()
+    phone_value = profile.get("phone", "").strip()
+    salary_value = (profile.get("salary_expectation") or _DEFAULT_SALARY).strip()
+
+    try:
+        fields_info = session.page.evaluate("""
+            () => {
+                const root = document.querySelector("[role='dialog']") || document.body;
+                const results = [];
+                const inputs = Array.from(root.querySelectorAll(
+                    'input[type="text"], input[type="number"], input[type="tel"], input:not([type])'
+                ));
+                for (const inp of inputs) {
+                    const style = window.getComputedStyle(inp);
+                    if (style.display === 'none' || style.visibility === 'hidden') continue;
+                    if (inp.value && inp.value.trim()) continue;  // déjà rempli
+                    let labelText = '';
+                    if (inp.id) {
+                        const lbl = document.querySelector('label[for="' + inp.id + '"]');
+                        if (lbl) labelText = (lbl.innerText || lbl.textContent || '').trim().toLowerCase();
+                    }
+                    if (!labelText) {
+                        let el = inp.parentElement;
+                        for (let i = 0; i < 5; i++) {
+                            if (!el) break;
+                            const lbl = el.querySelector('label');
+                            if (lbl) {
+                                labelText = (lbl.innerText || lbl.textContent || '').trim().toLowerCase();
+                                break;
+                            }
+                            el = el.parentElement;
+                        }
+                    }
+                    if (!labelText) {
+                        // Dernier recours: placeholder
+                        labelText = (inp.placeholder || '').toLowerCase();
+                    }
+                    results.push({id: inp.id || '', name: inp.name || '',
+                                  label: labelText, inputType: inp.type || 'text'});
+                }
+                return results;
+            }
+        """)
+
+        for field in fields_info:
+            label = field.get("label", "").lower()
+            field_id = field.get("id", "")
+            input_type = field.get("inputType", "text")
+
+            # Classifier le champ
+            fill_value = None
+            if any(kw in label for kw in _PHONE_KEYWORDS) or input_type == "tel":
+                fill_value = phone_value or "+33600000000"
+            elif any(kw in label for kw in _SALARY_KEYWORDS):
+                fill_value = salary_value
+            elif any(kw in label for kw in _ZIP_KEYWORDS):
+                fill_value = profile.get("postal_code", "75001")
+            else:
+                # Ne pas remplir les champs non identifiés avec données de contact
+                continue
+
+            try:
+                if field_id:
+                    inp = session.page.locator(f"#{field_id}").first
+                else:
+                    name = field.get("name", "")
+                    inp = session.page.locator(f"input[name='{name}']").first
+                if inp.count() and inp.is_visible(timeout=500):
+                    inp.fill(fill_value)
+                    session.log("info", f"Contact auto-fill: '{label[:50]}' → '{fill_value[:20]}'")
+                    filled += 1
+                    _t.sleep(0.2)
+            except Exception as e:
+                session.log("debug", f"Contact fill error ({label[:30]}): {e}")
+
+    except Exception as e:
+        session.log("debug", f"_autofill_contact_fields: {e}")
+    return filled
+
+
+def _autofill_checkbox_fields(session: BrowserSession) -> int:
+    """Coche les checkboxes requises non cochées (consentements, CGU...).
+
+    Retourne le nombre de checkboxes cochées.
+    """
+    import time as _t
+    filled = 0
+    try:
+        checkboxes = session.page.evaluate("""
+            () => {
+                const root = document.querySelector("[role='dialog']") || document.body;
+                const results = [];
+                const cbs = Array.from(root.querySelectorAll('input[type="checkbox"]'));
+                for (const cb of cbs) {
+                    if (cb.checked) continue;
+                    const style = window.getComputedStyle(cb);
+                    if (style.display === 'none' || style.visibility === 'hidden') continue;
+                    const isRequired = cb.required || cb.getAttribute('aria-required') === 'true';
+                    if (!isRequired) continue;
+                    results.push({id: cb.id || '', name: cb.name || ''});
+                }
+                return results;
+            }
+        """)
+        for cb_info in checkboxes:
+            cb_id = cb_info.get("id", "")
+            try:
+                if cb_id:
+                    cb = session.page.locator(f"#{cb_id}").first
+                else:
+                    cb = session.page.locator(f"input[type='checkbox'][name='{cb_info.get('name','')}']").first
+                if cb.count() and not cb.is_checked(timeout=500):
+                    cb.check(timeout=3000)
+                    session.log("info", f"Checkbox auto-checked (id={cb_id})")
+                    filled += 1
+                    _t.sleep(0.2)
+            except Exception as e:
+                session.log("debug", f"Checkbox check error (id={cb_id}): {e}")
+    except Exception as e:
+        session.log("debug", f"_autofill_checkbox_fields: {e}")
     return filled
 
 
