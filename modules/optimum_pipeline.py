@@ -206,6 +206,15 @@ RÈGLES STRICTES :
     Ne pas utiliser de caractères d'échappement LaTeX (pas de \\& \\% \\# \\_).
     Le code Python se chargera de l'échappement LaTeX après parsing.
 
+RÈGLE ATS — VOCABULAIRE DE L'OFFRE (PRIORITÉ MAXIMALE) :
+- Utilise les TERMES EXACTS de l'offre dans les bullets d'expérience et le summary.
+  Exemple : si l'offre dit "fine-tuning de LLM" → écrire "fine-tuning de LLM", pas "entraînement de modèles".
+  Si l'offre dit "MLOps" → "MLOps". Si elle dit "Kubernetes" → "Kubernetes".
+- Objectif : 70-80% du vocabulaire technique des bullets vient directement de l'offre.
+- skills et tools : les technologies NOMMÉES dans l'offre passent EN PREMIER.
+- summary : chaque bullet évoque une compétence ou techno nommée dans l'offre.
+- Le recruteur doit reconnaître ses propres mots — c'est ce qui passe l'ATS.
+
 OBJECTIF REMPLISSAGE PAGE A4 COMPLÈTE :
 Le CV DOIT remplir intégralement la page A4 — ni débordement ni espace vide.
 Génère un contenu RICHE, COMPLET et PERCUTANT :

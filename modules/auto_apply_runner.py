@@ -43,32 +43,51 @@ PLATFORM_MODULES = {
     "jobteaser": "modules.jobteaser_apply",
 }
 
-# Sélecteurs pour scraper la description d'une offre LinkedIn
+# Sélecteurs LinkedIn 2024-2025 (ordre de priorité)
 _LINKEDIN_DESC_SELECTORS = [
+    # Sélecteurs précis
     ".jobs-description__content",
-    "#job-details",
     ".jobs-description-content__text",
     ".show-more-less-html__markup",
+    "#job-details",
+    # Sélecteurs 2025 (attributs partiels)
+    "[class*='jobs-description-content']",
+    "[class*='job-description']",
+    "div[data-test-id='job-description']",
+    # Fallbacks larges
     ".description__text",
+    ".scaffold-layout__detail article",
+    "article",
 ]
 
 
 def _scrape_job_description(session: "BrowserSession", job_url: str, logger) -> str:
     """Navigue vers la page de l'offre et extrait son texte complet.
 
-    Retourne une chaîne vide si la description n'a pas pu être extraite.
-    Ne lève pas d'exception — les erreurs sont loguées en debug.
+    Stratégie :
+    1. goto job_url
+    2. Attend qu'un sélecteur de description apparaisse (jusqu'à 5s)
+    3. Essaie chaque sélecteur et retourne le premier texte > 150 chars
     """
     try:
-        session.page.goto(job_url, wait_until="domcontentloaded", timeout=20_000)
-        session.page.wait_for_timeout(1_500)          # laisser le JS rendre le contenu
+        session.page.goto(job_url, wait_until="domcontentloaded", timeout=25_000)
+        # Attendre que le contenu JS soit rendu
+        for sel in _LINKEDIN_DESC_SELECTORS[:4]:
+            try:
+                session.page.wait_for_selector(sel, timeout=4_000)
+                break
+            except Exception:
+                continue
+        else:
+            session.page.wait_for_timeout(2_500)
+
         for sel in _LINKEDIN_DESC_SELECTORS:
             try:
                 el = session.page.locator(sel).first
                 if el.count() > 0:
-                    text = el.inner_text(timeout=4_000).strip()
-                    if len(text) > 150:                # description non-vide
-                        logger("debug", f"Description scrappée ({len(text)} chars) via {sel}")
+                    text = el.inner_text(timeout=5_000).strip()
+                    if len(text) > 150:
+                        logger("info", f"Description scrappée ({len(text)} chars) via {sel}")
                         return text
             except Exception:
                 continue
