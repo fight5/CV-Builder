@@ -334,6 +334,11 @@ def _latex_escape(s: str) -> str:
         ("}", r"\}"),
         ("~", r"\textasciitilde{}"),
         ("^", r"\textasciicircum{}"),
+        # Ligatures UTF-8 non supportées par pdflatex sans inputenc complet
+        ("œ", r"\oe{}"),
+        ("Œ", r"\OE{}"),
+        ("æ", r"\ae{}"),
+        ("Æ", r"\AE{}"),
     ]
     for k, v in repl:
         s = s.replace(k, v)
@@ -899,6 +904,15 @@ def generate_optimized_cv(
     # Limiter la colonne gauche pour éviter le débordement A4
     data = _cap_left_column(data)
 
+    # Normaliser les langues : le LLM renvoie parfois des dicts {"language":…, "level":…}
+    langs = data.get("languages", [])
+    if langs and isinstance(langs[0], dict):
+        data["languages"] = [
+            f"{item.get('language', item.get('name', str(item)))} : {item.get('level', '')}"
+            .strip(" :")
+            for item in langs
+        ]
+
     # Construire le LaTeX en injectant les données dans le template fixe
     latex = _build_latex_from_json(data, template, prefs)
 
@@ -909,6 +923,83 @@ def generate_optimized_cv(
 
 
 # ── Génération lettre ────────────────────────────────────────────────────────
+# Salutations d'ouverture que le LLM ajoute parfois malgré la consigne — le
+# template fournit déjà {{SALUTATION}}, donc on retire un doublon en tête de corps.
+_SALUTATION_RE = re.compile(
+    r"^(?:"
+    r"madame\s*,?\s*monsieur|monsieur\s*,?\s*madame|madame|monsieur|"
+    r"messieurs|cher(?:e|ère|es|ères)?\s+.+|"
+    r"dear\s+(?:hiring\s+manager|sir(?:\s+or\s+madam)?|madam|recruiter|team|.+)|"
+    r"to\s+whom\s+it\s+may\s+concern"
+    r")\s*[,:.]?\s*$",
+    re.IGNORECASE,
+)
+
+# Formules de fermeture que le LLM ajoute parfois — le template fournit déjà
+# {{CLOSING}} et la signature, donc on retire un doublon en fin de corps.
+_CLOSING_RE = re.compile(
+    r"^(?:"
+    r"je\s+vous\s+prie\s+d.agr[ée]er.*|"
+    r"veuillez\s+(?:agr[ée]er|recevoir).*|"
+    r"dans\s+l.attente\s+.*|"
+    r"cordialement|bien\s+cordialement|sinc[èe]rement|respectueusement|"
+    r"yours\s+(?:sincerely|faithfully|truly)|sincerely(?:\s+yours)?|"
+    r"best\s+regards|kind\s+regards|regards|warm\s+regards|"
+    r"looking\s+forward\s+.*"
+    r")\s*[,.]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _clean_letter_body(body: str, sender_name: str = "") -> str:
+    """Retire salutation d'ouverture, formule de clôture et signature du corps.
+
+    Le LLM ré-ajoute souvent « Madame, Monsieur, » et « Je vous prie d'agréer… »
+    malgré la consigne, ce qui produit un doublon puisque le template les fournit.
+    On nettoie les 2 premières et 2 dernières lignes non vides.
+    """
+    body = (body or "").strip()
+    if not body:
+        return ""
+    # Découpe en paragraphes (blocs séparés par ligne vide)
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()]
+    sender_norm = _slug(sender_name).lower()
+
+    # Retirer une éventuelle salutation d'ouverture (1er paragraphe court)
+    while paragraphs:
+        first_line = paragraphs[0].splitlines()[0].strip()
+        if _SALUTATION_RE.match(first_line):
+            # Salutation seule sur sa ligne → on retire toute la ligne
+            rest = "\n".join(paragraphs[0].splitlines()[1:]).strip()
+            if rest:
+                paragraphs[0] = rest
+            else:
+                paragraphs.pop(0)
+        else:
+            break
+
+    # Retirer d'éventuelles formules de clôture / signature (derniers paragraphes)
+    while paragraphs:
+        last_para = paragraphs[-1]
+        last_lines = [ln.strip() for ln in last_para.splitlines() if ln.strip()]
+        if not last_lines:
+            paragraphs.pop()
+            continue
+        last_line = last_lines[-1]
+        is_closing = bool(_CLOSING_RE.match(last_line))
+        is_signature = sender_norm and _slug(last_line).lower() == sender_norm
+        if is_closing or is_signature:
+            remaining = last_lines[:-1]
+            if remaining:
+                paragraphs[-1] = "\n".join(remaining)
+            else:
+                paragraphs.pop()
+        else:
+            break
+
+    return "\n\n".join(paragraphs).strip()
+
+
 def generate_cover_letter(
     job_offer: str,
     optimized_cv: str,
@@ -921,7 +1012,8 @@ def generate_cover_letter(
         job_offer=(job_offer or "").strip()[:8000],
         optimized_cv=(optimized_cv or "").strip()[:8000],
     )
-    return _strip_code_fences(generate_with_llm(prompt, temperature=0.55))
+    raw = _strip_code_fences(generate_with_llm(prompt, temperature=0.55))
+    return _clean_letter_body(raw)
 
 
 # ── Extraction nom / titre / entreprise ──────────────────────────────────────
@@ -1258,6 +1350,8 @@ def run_optimum_pipeline(
     # 2. Lettre — seulement si demandée
     if prefs.generate_letter:
         body = generate_cover_letter(job_offer, cv_latex, prefs)
+        # Nettoyage final avec le nom du candidat (retire une signature éventuelle)
+        body = _clean_letter_body(body, sender_name=candidate)
         out["letter_body"] = body
         letter_latex = _build_letter_latex(
             body, prefs,

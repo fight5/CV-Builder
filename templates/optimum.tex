@@ -6,6 +6,7 @@
 \usepackage[margin=1.3cm]{geometry}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
+\usepackage{lmodern}
 \usepackage[{{BABEL_LANG}}]{babel}
 \usepackage{graphicx}
 \usepackage{xcolor}
@@ -58,7 +59,9 @@
 % COLUMNS =====================================================================
 \noindent
 \colorbox{leftbg}{%
-\begin{minipage}[t][20cm][t]{0.35\textwidth}
+% Hauteur dynamique : le bandeau descend jusqu'au bas de la page A4,
+% en s'adaptant automatiquement à la hauteur de l'en-tête (avec/sans photo).
+\begin{minipage}[t][\dimexpr\textheight-\pagetotal-0.4cm\relax][t]{0.35\textwidth}
 \color{white}
 \vspace{0.8em}
 
