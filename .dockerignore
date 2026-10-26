@@ -1,0 +1,50 @@
+# === Secrets — NE JAMAIS embarquer dans l'image ===
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# === Données personnelles ===
+# La photo d'identite ne doit pas etre bundlee dans une image distribuable ;
+# chaque utilisateur uploade la sienne via l'interface.
+templates/assets/photo_didentite.png
+templates/assets/photo_didentite.PNG
+
+# === Git / historique ===
+.git
+.gitignore
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyc
+.pytest_cache/
+venv/
+.venv/
+
+# === Sorties generees ===
+outputs/*.pdf
+outputs/*.tex
+outputs/*.aux
+outputs/*.log
+outputs/*.out
+outputs/*.md
+outputs/*.csv
+outputs/*.PNG
+outputs/*.png
+
+# === Dev / debug (inutile en production) ===
+debug_*.png
+*.synctex.gz
+*.db
+*.sqlite3
+.DS_Store
+.devcontainer/
+.github/
+.claude/
+
+# === Fichiers de test et scripts ponctuels ===
+test_*.py
+*_test.py
+analyze_csv.py
+setup_jobteaser_login.py
